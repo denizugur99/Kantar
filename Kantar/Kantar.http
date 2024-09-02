@@ -1,0 +1,6 @@
+@Kantar_HostAddress = http://localhost:5196
+
+GET {{Kantar_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
