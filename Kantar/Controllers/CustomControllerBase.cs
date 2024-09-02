@@ -27,22 +27,7 @@ namespace Kantar.Controllers
             };
         }
 
-        [ApiExplorerSettings(IgnoreApi = true)]
-        public string GetUserId()
-        {
-            if (HttpContext.User.Claims.Any())
-                return HttpContext.User.Claims.First(f => f.Type.Equals("userid")).Value;
-            else return null;
-        }
-
-        [ApiExplorerSettings(IgnoreApi = true)]
-        [HttpGet("getusername")]
-        public string GetUserName()
-        {
-            if (HttpContext.User.Claims.Any())
-                return HttpContext.User.Claims.First(f => f.Type.Equals("name")).Value;
-            else return null;
-        }
+        
 
 
     }
