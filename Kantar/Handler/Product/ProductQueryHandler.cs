@@ -64,7 +64,13 @@ namespace Kantar.Handler.Product
             {
                 var pagesize=request.pageSize;
                 var pagenumber=request.pageNumber;
-                var query = await _context.Products.Include(x => x.UnitPrice).Where(x => (!x.IsDeleted)&&(x.DateTime>=request.FirstDate)&&(x.DateTime<=request.LastDate)  ).Skip((pagenumber - 1) * pagesize).Take(pagesize).Select(u => new ProductQueryDto
+                var query = _context.Products.Include(x => x.UnitPrice).Where(x => (!x.IsDeleted) && (x.DateTime >= request.FirstDate) && (x.DateTime <= request.LastDate) &&
+                (string.IsNullOrEmpty(request.search) || x.UnitPrice.Name.Trim().ToLower().Contains(request.search.Trim().ToLower())));
+                if (query == null)
+                {
+                    return Response<List<ProductQueryDto>>.Fail("ÜRÜN YOK", 500);
+                }
+                var products= await query.Skip((pagenumber - 1) * pagesize).Take(pagesize).Select(u => new ProductQueryDto
                 {
                     Name = u.UnitPrice.Name,
                     Weight = u.Weight,
@@ -81,11 +87,8 @@ namespace Kantar.Handler.Product
                     TotalRecords = totalRecords
                 };
 
-                if (query == null)
-                {
-                    return Response<List<ProductQueryDto>>.Fail("ÜRÜN YOK", 500);
-                }
-                return Response<List<ProductQueryDto>>.Success(query, 200,pagination);
+               
+                return Response<List<ProductQueryDto>>.Success(products, 200,pagination);
 
 
             }

@@ -9,6 +9,7 @@ namespace Kantar.Queries
         public int pageSize { get; set; }
         public DateTime FirstDate { get; set; }
         public DateTime LastDate { get; set; }
+        public string? search {  get; set; }
 
     }
 }

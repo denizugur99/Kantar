@@ -23,12 +23,13 @@ namespace Kantar.Controllers
             return CreateActionResultInstance(response);
         }
         [HttpGet("getlist/{pagesize?}/{pagenumber?}")]
-        public async Task<IActionResult> GetPriceList(int pagesize,int pagenumber)
+        public async Task<IActionResult> GetPriceList(int pagesize,int pagenumber,[FromQuery]string? search)
         {
             var result = await _mediator.Send(new PriceQuery()
             {
                 pageNumber= pagenumber,
-                pageSize=pagesize
+                pageSize=pagesize,
+                search=search
             });
             return CreateActionResultInstance(result);
         }

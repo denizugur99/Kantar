@@ -22,7 +22,8 @@ namespace Kantar.Handler.Price
         {
             try
             {
-                var query = _context.UnitPrice.Where(w => !w.IsDeleted);
+                var query = _context.UnitPrice.Where(w => (!w.IsDeleted)&&
+                (string.IsNullOrEmpty(request.search)||(w.Name.Trim().ToLower().Contains(request.search.Trim().ToLower()))));
                 var totalRecords=query.Count();
                 var pageNumber=request.pageNumber;
                 var pageSize=request.pageSize;
