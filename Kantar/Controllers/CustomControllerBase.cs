@@ -1,4 +1,5 @@
-﻿using Kantar.Dtos;
+﻿
+using Kantar.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
@@ -26,8 +27,6 @@ namespace Kantar.Controllers
                 StatusCode = 400
             };
         }
-
-        
 
 
     }

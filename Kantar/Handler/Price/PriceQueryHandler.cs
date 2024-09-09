@@ -1,5 +1,6 @@
 ﻿using Kantar.DAL;
 using Kantar.Dtos;
+using Kantar.Pagination;
 using Kantar.Queries;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -21,13 +22,26 @@ namespace Kantar.Handler.Price
         {
             try
             {
-                var query = await _context.UnitPrice.Where(w => !w.IsDeleted).Select(u => new UnitPriceWithIdDto
+                var query = _context.UnitPrice.Where(w => !w.IsDeleted);
+                var totalRecords=query.Count();
+                var pageNumber=request.pageNumber;
+                var pageSize=request.pageSize;
+                var units=await query
+                    .Skip((pageNumber-1)*pageSize)
+                    .Take(pageSize)
+                    .Select(u => new UnitPriceWithIdDto
+                    {
+                        Id = u.Id,
+                        Price = u.Price,
+                        ProductName = u.Name
+                    }).ToListAsync();
+                PaginationMaker pagination=new PaginationMaker()
                 {
-                    Id = u.Id,
-                    Price = u.Price,
-                    ProductName = u.Name
-                }).ToListAsync();
-                return Response<List<UnitPriceWithIdDto>>.Success(query, 200);
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    TotalRecords = totalRecords
+                };
+                return Response<List<UnitPriceWithIdDto>>.Success(units, 200,pagination);
             }
             catch (Exception)
             {

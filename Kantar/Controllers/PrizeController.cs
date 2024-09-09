@@ -22,10 +22,14 @@ namespace Kantar.Controllers
             var response = await _mediator.Send(command);
             return CreateActionResultInstance(response);
         }
-        [HttpGet("getlist")]
-        public async Task<IActionResult> GetPriceList()
+        [HttpGet("getlist/{pagesize?}/{pagenumber?}")]
+        public async Task<IActionResult> GetPriceList(int pagesize,int pagenumber)
         {
-            var result = await _mediator.Send(new PriceQuery());
+            var result = await _mediator.Send(new PriceQuery()
+            {
+                pageNumber= pagenumber,
+                pageSize=pagesize
+            });
             return CreateActionResultInstance(result);
         }
         [HttpPut("updateprize")]

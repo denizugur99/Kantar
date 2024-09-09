@@ -27,10 +27,15 @@ namespace Kantar.Controllers
          
         }
         
-        [HttpGet("GetAll")]
-        public async Task<IActionResult> GetAll()
+        [HttpGet("GetAll/{pagesize?}/{page?}")]
+        public async Task<IActionResult> GetAll(int pagesize ,int page)
         {
-            var response = await _mediator.Send(new ProductsQuery());
+            var response = await _mediator.Send(new ProductsQuery()
+            {
+                PageCount=page,
+                PageSize=pagesize,
+                
+            });
             return CreateActionResultInstance(response);
         }
         [HttpPost("send")]
@@ -41,11 +46,13 @@ namespace Kantar.Controllers
 
 
         }
-        [HttpGet("GetWithTime/{first_time}/{last_time}")]
-        public async Task<IActionResult> GetWithTime(DateTime first_time,DateTime last_time)
+        [HttpGet("GetWithTime/{pagesize?}/{pagenumber?}/{first_time}/{last_time}")]
+        public async Task<IActionResult> GetWithTime(int pagesize,int pagenumber,DateTime first_time,DateTime last_time)
         {
             var response = await _mediator.Send(new GetProductsWithTimeQuery()
             {
+                pageNumber=pagenumber,
+                pageSize=pagesize,
                 FirstDate = first_time,
                 LastDate = last_time
             });

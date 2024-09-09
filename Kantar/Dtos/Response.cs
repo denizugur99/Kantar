@@ -1,4 +1,5 @@
 ﻿
+using Kantar.Pagination;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
@@ -16,9 +17,10 @@ namespace Kantar.Dtos
         public bool IsSuccessful { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string Errors { get; set; }
-        public static Response<T> Success(T data, int statusCode)
+        public PaginationMaker Pagination { get; set; }
+        public static Response<T> Success(T data, int statusCode,PaginationMaker pagination=null)
         {
-            return new Response<T> { Data = data, StatusCode = statusCode, IsSuccessful = true };
+            return new Response<T> { Data = data, StatusCode = statusCode, IsSuccessful = true,Pagination=pagination };
         }
         public static Response<T> Success(int statusCode)
         {

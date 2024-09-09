@@ -6,6 +6,8 @@ namespace Kantar.Queries
 {
     public class PriceQuery : IRequest<Response<List<UnitPriceWithIdDto>>>
     {
+        public int pageSize { get; set; }
+        public int pageNumber { get; set; }
 
     }
         

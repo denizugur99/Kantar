@@ -1,7 +1,9 @@
 ﻿using Kantar.DAL;
 using Kantar.Dtos;
+using Kantar.Pagination;
 using Kantar.Queries;
 using MediatR;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kantar.Handler.Product
@@ -20,19 +22,32 @@ namespace Kantar.Handler.Product
         {
             try
             {
-                var query = await _context.Products.Include(x=>x.UnitPrice).Where(x => !x.IsDeleted).Select(u => new ProductQueryDto
-                {
-                    Name = u.UnitPrice.Name,
-                    Weight = u.Weight,
-                    DateTime = u.DateTime.Date,
-                    TotalPrice = u.TotalPrice,
-                    Devir=u.Devir
-
-                }).ToListAsync();
+                var query = _context.Products.Include(x=>x.UnitPrice).Where(x => !x.IsDeleted);
                 if(query == null) {
                     return Response<List<ProductQueryDto>>.Fail("ÜRÜN YOK", 500);
                 }
-                return Response<List<ProductQueryDto>>.Success(query, 200);
+                int pagesize=request.PageSize;
+                int page=request.PageCount;
+                var products = await query
+                    .Skip((page - 1) * pagesize)
+                    .Take(pagesize).Select(u => new ProductQueryDto()
+                     {
+                        Name = u.UnitPrice.Name,
+                        Weight = u.Weight,
+                        DateTime = u.DateTime.Date,
+                        TotalPrice = u.TotalPrice,
+                        Devir = u.Devir
+
+                    }).ToListAsync();
+                var totalRecords = query.Count();
+
+                PaginationMaker pagination = new PaginationMaker()
+                {
+                    PageSize = pagesize,
+                    PageNumber = page,
+                    TotalRecords = totalRecords
+                };
+                return Response<List<ProductQueryDto>>.Success(products, 200,pagination);
                
 
             }
@@ -47,7 +62,9 @@ namespace Kantar.Handler.Product
         {
             try
             {
-                var query = await _context.Products.Include(x => x.UnitPrice).Where(x => (!x.IsDeleted)&&(x.DateTime>=request.FirstDate)&&(x.DateTime<=request.LastDate)  ).Select(u => new ProductQueryDto
+                var pagesize=request.pageSize;
+                var pagenumber=request.pageNumber;
+                var query = await _context.Products.Include(x => x.UnitPrice).Where(x => (!x.IsDeleted)&&(x.DateTime>=request.FirstDate)&&(x.DateTime<=request.LastDate)  ).Skip((pagenumber - 1) * pagesize).Take(pagesize).Select(u => new ProductQueryDto
                 {
                     Name = u.UnitPrice.Name,
                     Weight = u.Weight,
@@ -56,11 +73,19 @@ namespace Kantar.Handler.Product
                     Devir = u.Devir
 
                 }).ToListAsync();
+                var totalRecords = query.Count();
+                PaginationMaker pagination = new PaginationMaker()
+                {
+                    PageSize = pagesize,
+                    PageNumber = pagenumber,
+                    TotalRecords = totalRecords
+                };
+
                 if (query == null)
                 {
                     return Response<List<ProductQueryDto>>.Fail("ÜRÜN YOK", 500);
                 }
-                return Response<List<ProductQueryDto>>.Success(query, 200);
+                return Response<List<ProductQueryDto>>.Success(query, 200,pagination);
 
 
             }
