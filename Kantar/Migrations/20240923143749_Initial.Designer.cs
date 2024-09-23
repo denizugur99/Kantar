@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kantar.Migrations
 {
     [DbContext(typeof(KantarDbContext))]
-    [Migration("20240830184841_initial")]
-    partial class initial
+    [Migration("20240923143749_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
