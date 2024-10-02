@@ -51,6 +51,10 @@ namespace Kantar.Handler.Price
         {
             try
             {
+                if (request.Prize == 0)
+                {
+                    return Response<UnitPriceDto>.Fail("Fiyat 0 olamaz", 500);
+                }
                 bool isNameUnique = !_context.UnitPrice.Any(x => x.Name == request.Name && x.IsDeleted==false);
                 if (isNameUnique)
                 {

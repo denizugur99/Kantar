@@ -39,7 +39,6 @@ namespace Kantar.Handler.Product
 
                     }).ToListAsync();
                 var totalRecords = query.Count();
-                double x;
 
                 var devir =await query.GroupBy(x => x.UnitPrice).Select(y=>new Information()
                 {

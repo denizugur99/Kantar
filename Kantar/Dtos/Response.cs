@@ -7,7 +7,7 @@ namespace Kantar.Dtos
 {
     public class Response<T>
     {
-       
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public T Data { get; set; }
 
         [JsonIgnore]
@@ -17,6 +17,7 @@ namespace Kantar.Dtos
         public bool IsSuccessful { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string Errors { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public PaginationMaker Pagination { get; set; }
         public static Response<T> Success(T data, int statusCode,PaginationMaker pagination=null)
         {
