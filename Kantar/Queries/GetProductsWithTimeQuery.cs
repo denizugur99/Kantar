@@ -3,7 +3,7 @@ using MediatR;
 
 namespace Kantar.Queries
 {
-    public class GetProductsWithTimeQuery:IRequest<Response<List<ProductQueryDto>>>
+    public class GetProductsWithTimeQuery:IRequest<Response<ProductQueryDto>>
     {
         public int pageNumber { get; set; }
         public int pageSize { get; set; }

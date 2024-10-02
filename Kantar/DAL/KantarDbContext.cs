@@ -13,7 +13,7 @@ namespace Kantar.DAL
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-            modelBuilder.Entity<UnitPrice>().HasIndex(x=>x.Name).IsUnique();
+            
         }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {

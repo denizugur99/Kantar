@@ -4,10 +4,7 @@ namespace Kantar.Dtos
 {
     public class ProductQueryDto
     {
-        public string Name { get; set; }
-        public double Weight { get; set; }
-        public DateTime DateTime { get; set; }
-        public double TotalPrice { get; set; }
-        public double Devir { get; set; }
+        public List<ProductDto> Products { get; set; }
+       public List <Information> ınformations { get; set; }
     }
 }

@@ -38,8 +38,14 @@ namespace Kantar.Controllers
             var result=await _mediator.Send(command);
             return CreateActionResultInstance(result);
         }
+        [HttpDelete("delete")]
+        public async Task<IActionResult> Delete([FromBody] DeletePrizeCommand command)
+        {
+            var response = await _mediator.Send(command);
+            return CreateActionResultInstance(response);
+        }
 
-            
+
 
     }
 }

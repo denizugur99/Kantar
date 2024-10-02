@@ -11,7 +11,8 @@ namespace Kantar.Handler.Product
 {
     public class ProductCommandHandler : IRequestHandler<AddProductCommand, Response<NoContent>>,
                                           
-                                         IRequestHandler<ShipProductCommand, Response<NoContent>>
+                                         IRequestHandler<ShipProductCommand, Response<NoContent>>,
+                                         IRequestHandler<DeleteProductCommand,Response<NoContent>>
     {
         private readonly KantarDbContext _context;
 
@@ -56,15 +57,8 @@ namespace Kantar.Handler.Product
                                            .Where(x => !x.IsDeleted)
                                            .OrderByDescending(p => p.DateTime)
                                            .FirstOrDefault(x=>x.UnitPrice.Name.Trim().ToLower().Equals(product.UnitPrice.Name));
-                if (lastProduct != null)
-                {
-                  product.Devir = product.TotalPrice + lastProduct.Devir;
-                }
-                else
-                {
-                    product.Devir = product.TotalPrice;
-                }
-                
+               
+                product.unitPriceId=product.UnitPrice.Id;
                 
                 await _context.Products.AddAsync(product);
                 await _context.SaveChangesAsync();
@@ -120,14 +114,7 @@ namespace Kantar.Handler.Product
                                            .Where(x => !x.IsDeleted)
                                            .OrderByDescending(p => p.DateTime)
                                            .FirstOrDefault(x => x.UnitPrice.Name.Trim().ToLower().Equals(product.UnitPrice.Name));
-                if (lastProduct != null)
-                {
-                    product.Devir = product.TotalPrice + lastProduct.Devir;
-                }
-                else
-                {
-                    product.Devir = product.TotalPrice;
-                }
+              
 
 
                 await _context.Products.AddAsync(product);
@@ -140,6 +127,30 @@ namespace Kantar.Handler.Product
             catch (Exception)
             {
                 await transaction.RollbackAsync();
+                return Response<NoContent>.Fail("HATA", 500);
+            }
+        }
+
+        public async Task<Response<NoContent>> Handle(DeleteProductCommand request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var product=await _context.Products.Where(y=>!y.IsDeleted&& y.Id.Equals(request.Id)).FirstOrDefaultAsync();
+                if (product == null)
+                {
+                    return Response<NoContent>.Fail("Ürün bulunamadı lütfen kontrol ediniz",500);
+                }
+                else
+                {
+                    product.IsDeleted = true;
+                }
+                await _context.SaveChangesAsync();
+                return Response<NoContent>.Success(204);
+
+            }
+            catch ( Exception)
+            {
+
                 return Response<NoContent>.Fail("HATA", 500);
             }
         }

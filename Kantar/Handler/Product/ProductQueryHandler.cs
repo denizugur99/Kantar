@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kantar.Handler.Product
 {
-    public class ProductQueryHandler:IRequestHandler<ProductsQuery,Response<List<ProductQueryDto>>>,
-                                     IRequestHandler<GetProductsWithTimeQuery, Response<List<ProductQueryDto>>>
+    public class ProductQueryHandler:IRequestHandler<ProductsQuery,Response<ProductQueryDto>>,
+                                     IRequestHandler<GetProductsWithTimeQuery, Response<ProductQueryDto>>
     {
         private readonly KantarDbContext _context;
 
@@ -18,47 +18,60 @@ namespace Kantar.Handler.Product
             _context = context;
         }
 
-        public async Task<Response<List<ProductQueryDto>>> Handle(ProductsQuery request, CancellationToken cancellationToken)
+        public async Task<Response<ProductQueryDto>> Handle(ProductsQuery request, CancellationToken cancellationToken)
         {
             try
             {
                 var query = _context.Products.Include(x=>x.UnitPrice).Where(x => !x.IsDeleted);
                 if(query == null) {
-                    return Response<List<ProductQueryDto>>.Fail("ÜRÜN YOK", 500);
+                    return Response<ProductQueryDto>.Fail("ÜRÜN YOK", 500);
                 }
                 int pagesize=request.PageSize;
                 int page=request.PageCount;
                 var products = await query
                     .Skip((page - 1) * pagesize)
-                    .Take(pagesize).Select(u => new ProductQueryDto()
+                    .Take(pagesize).Select(u => new ProductDto()
                      {
                         Name = u.UnitPrice.Name,
                         Weight = u.Weight,
                         DateTime = u.DateTime.Date,
                         TotalPrice = u.TotalPrice,
-                        Devir = u.Devir
 
                     }).ToListAsync();
                 var totalRecords = query.Count();
+                double x;
 
+                var devir =await query.GroupBy(x => x.UnitPrice).Select(y=>new Information()
+                {
+                    Name=y.Key.Name,
+                    devir=y.Sum(x=>x.TotalPrice),
+                    totalweight=y.Sum(x=>x.Weight)
+
+                }
+                ).ToListAsync();
+                
                 PaginationMaker pagination = new PaginationMaker()
                 {
                     PageSize = pagesize,
                     PageNumber = page,
                     TotalRecords = totalRecords
                 };
-                return Response<List<ProductQueryDto>>.Success(products, 200,pagination);
+                ProductQueryDto queryDto = new ProductQueryDto();
+                queryDto.Products=products;
+                queryDto.ınformations = devir;
+                
+                return Response<ProductQueryDto>.Success(queryDto, 200,pagination);
                
 
             }
             catch (Exception)
             {
 
-                return Response<List<ProductQueryDto>>.Fail("HATA", 500);
+                return Response<ProductQueryDto>.Fail("HATA", 500);
             }
         }
 
-        public async Task<Response<List<ProductQueryDto>>> Handle(GetProductsWithTimeQuery request, CancellationToken cancellationToken)
+        public async Task<Response<ProductQueryDto>> Handle(GetProductsWithTimeQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -68,16 +81,13 @@ namespace Kantar.Handler.Product
                 (string.IsNullOrEmpty(request.search) || x.UnitPrice.Name.Trim().ToLower().Contains(request.search.Trim().ToLower())));
                 if (query == null)
                 {
-                    return Response<List<ProductQueryDto>>.Fail("ÜRÜN YOK", 500);
+                    return Response<ProductQueryDto>.Fail("ÜRÜN YOK", 500);
                 }
-                var products= await query.Skip((pagenumber - 1) * pagesize).Take(pagesize).Select(u => new ProductQueryDto
+                var products= await query.Skip((pagenumber - 1) * pagesize).Take(pagesize).Select(u => new ProductDto
                 {
                     Name = u.UnitPrice.Name,
                     Weight = u.Weight,
                     DateTime = u.DateTime.Date,
-                    TotalPrice = u.TotalPrice,
-                    Devir = u.Devir
-
                 }).ToListAsync();
                 var totalRecords = query.Count();
                 PaginationMaker pagination = new PaginationMaker()
@@ -86,16 +96,27 @@ namespace Kantar.Handler.Product
                     PageNumber = pagenumber,
                     TotalRecords = totalRecords
                 };
+                List<ProductQueryDto> result = new List<ProductQueryDto>();
+                var devir = await query.GroupBy(x => x.UnitPrice).Select(y => new Information()
+                {
+                    Name = y.Key.Name,
+                    devir = y.Sum(x => x.TotalPrice),
+                    totalweight = y.Sum(x => x.Weight)
 
-               
-                return Response<List<ProductQueryDto>>.Success(products, 200,pagination);
+                }
+                ).ToListAsync();
+                ProductQueryDto queryDto = new ProductQueryDto();
+                queryDto.Products = products;
+                queryDto.ınformations = devir;
+
+                return Response<ProductQueryDto>.Success(queryDto, 200,pagination);
 
 
             }
             catch (Exception)
             {
 
-                return Response<List<ProductQueryDto>>.Fail("HATA", 500);
+                return Response<ProductQueryDto>.Fail("HATA", 500);
             }
         }
     }

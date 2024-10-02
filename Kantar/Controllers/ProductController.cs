@@ -59,5 +59,11 @@ namespace Kantar.Controllers
             });
             return CreateActionResultInstance(response);
         }
+        [HttpDelete("delete")]
+        public async Task<IActionResult> Delete([FromBody]DeleteProductCommand command)
+        {
+            var response=await _mediator.Send(command);
+            return CreateActionResultInstance(response);
+        }
     }
 }

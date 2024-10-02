@@ -31,24 +31,21 @@ namespace Kantar.Migrations
                     b.Property<DateTime>("DateTime")
                         .HasColumnType("datetime2");
 
-                    b.Property<double>("Devir")
-                        .HasColumnType("float");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
                     b.Property<double>("TotalPrice")
                         .HasColumnType("float");
 
-                    b.Property<Guid>("UnitPriceId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<double>("Weight")
                         .HasColumnType("float");
 
+                    b.Property<Guid>("unitPriceId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("UnitPriceId");
+                    b.HasIndex("unitPriceId");
 
                     b.ToTable("Products");
                 });
@@ -64,15 +61,12 @@ namespace Kantar.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<double>("Price")
                         .HasColumnType("float");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
 
                     b.ToTable("UnitPrice");
                 });
@@ -81,7 +75,7 @@ namespace Kantar.Migrations
                 {
                     b.HasOne("Kantar.Entities.UnitPrice", "UnitPrice")
                         .WithMany()
-                        .HasForeignKey("UnitPriceId")
+                        .HasForeignKey("unitPriceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

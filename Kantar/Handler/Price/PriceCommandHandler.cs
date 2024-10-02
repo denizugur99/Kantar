@@ -8,7 +8,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Kantar.Handler.Price
 {
     public class PriceCommandHandler : IRequestHandler<UpdatePrizeCommand, Response<UnitPriceDto>>,
-                                     IRequestHandler<AddUnitPriceCommand, Response<UnitPriceDto>>
+                                     IRequestHandler<AddUnitPriceCommand, Response<UnitPriceDto>>,
+                                     IRequestHandler<DeletePrizeCommand,Response<NoContent>>
+                                     
+                                     
     {
         private readonly KantarDbContext _context;
 
@@ -48,26 +51,58 @@ namespace Kantar.Handler.Price
         {
             try
             {
-                var query = _context.UnitPrice.Where(x => !x.IsDeleted);
-                foreach (var item in query)
+                bool isNameUnique = !_context.UnitPrice.Any(x => x.Name == request.Name && x.IsDeleted==false);
+                if (isNameUnique)
                 {
-                    if (item.Name.Trim().ToLower().Equals(request.Name.Trim().ToLower()))
-                        return Response<UnitPriceDto>.Fail("Bu adda ürün zaten var fiyatı updatelemeyi deneyin", 500);
+                    //var query = _context.UnitPrice.Where(x => !x.IsDeleted);
+                    //foreach (var item in query)
+                    //{
+                    //    if (item.Name.Trim().ToLower().Equals(request.Name.Trim().ToLower()))
+                    //        return Response<UnitPriceDto>.Fail("Bu adda ürün zaten var fiyatı updatelemeyi deneyin", 500);
+                    //}
+                    var unitPrize = new UnitPrice()
+                    {
+                        Name = request.Name.Trim().ToLower(),
+                        Price = request.Prize
+                    };
+                    await _context.UnitPrice.AddAsync(unitPrize);
+                    await _context.SaveChangesAsync();
+                    return Response<UnitPriceDto>.Success(204);
                 }
-                var unitPrize = new UnitPrice()
+                else
                 {
-                    Name = request.Name.Trim().ToLower(),
-                    Price = request.Prize
-                };
-                await _context.UnitPrice.AddAsync(unitPrize);
-                await _context.SaveChangesAsync();
-                return Response<UnitPriceDto>.Success(204);
+                    return Response<UnitPriceDto>.Fail("Bu adda ürün zaten var fiyatı updatelemeyi deneyin", 500);
+                }
+
             }
             catch (Exception)
             {
                 return Response<UnitPriceDto>.Fail("hata", 500);
             }
 
+        }
+
+        public async Task<Response<NoContent>> Handle(DeletePrizeCommand request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var prize = await _context.UnitPrice.Where(y => !y.IsDeleted && y.Id.Equals(request.Id)).FirstOrDefaultAsync();
+                if (prize == null)
+                {
+                    return Response<NoContent>.Fail("Fiyat lütfen kontrol ediniz", 500);
+                }
+                else
+                {
+                    prize.IsDeleted = true;
+                }
+                await _context.SaveChangesAsync();
+                return Response<NoContent>.Success(204);
+
+            }
+            catch (Exception)
+            {
+                return Response<NoContent>.Fail("HATA", 500);
+            }
         }
     }
 }
