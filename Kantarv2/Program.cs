@@ -19,7 +19,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddLogging();
 builder.Services.AddMediatR(config => config.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly()));
-builder.Services.AddSingleton<ILlmService, LlmService>();
+builder.Services.AddHttpClient<ILlmService, LlmService>();
 builder.Services.AddDbContext<KantarDbContext>(options =>
 options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );

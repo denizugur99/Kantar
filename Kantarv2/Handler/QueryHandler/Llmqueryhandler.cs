@@ -34,7 +34,7 @@ namespace Kantarv2.Handler.QueryHandler
                 var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                      ?? "Bilinmeyen Kullanıcı";
                 string cleanPrompt = request.Prompt.Trim().ToLower();
-                string cacheKey = $"Analysis:{ComputeHash(cleanPrompt)}";
+                string cacheKey = $"Analysis:Product:{ComputeHash(cleanPrompt)}";
                 string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
                 
                 if (!string.IsNullOrEmpty(cachedResponse))
@@ -87,7 +87,7 @@ namespace Kantarv2.Handler.QueryHandler
                 var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                     ?? "Bilinmeyen Kullanıcı";
                 string cleanPrompt = request.Prompt.Trim().ToLower();
-                string cacheKey = $"Analysis:{ComputeHash(cleanPrompt)}";
+                string cacheKey = $"Analysis:Price:{ComputeHash(cleanPrompt)}";
                 string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
                 if (!string.IsNullOrEmpty(cachedResponse))
                 {
