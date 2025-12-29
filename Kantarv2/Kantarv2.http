@@ -1,0 +1,6 @@
+@Kantarv2_HostAddress = http://localhost:5064
+
+GET {{Kantarv2_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
