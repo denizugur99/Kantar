@@ -27,5 +27,15 @@ namespace Kantarv2.Controllers
 
             return CreateActionResultInstance(result);
         }
+        [Authorize(Roles = "SuperAdmin,Admin,User")]
+        [HttpGet("overallprice")]
+        public async Task<IActionResult> GetOverallPrice([FromQuery] string prompt)
+        {
+            var result = await _mediator.Send(new OverallPriceQuery
+            {
+                Prompt = prompt
+            });
+            return CreateActionResultInstance(result);
+        }
     }
 }

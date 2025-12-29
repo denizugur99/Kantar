@@ -10,7 +10,8 @@ using System.Security.Claims;
 
 namespace Kantarv2.Handler.QueryHandler
 {
-    public class Llmqueryhandler : IRequestHandler<Productaskllmquery, Response<string>>
+    public class Llmqueryhandler : IRequestHandler<Productaskllmquery, Response<string>>,
+        IRequestHandler<OverallPriceQuery, Response<string>>
     {
         private readonly IDistributedCache _cache;
         private readonly ILogger<Llmqueryhandler> _logger;
@@ -78,11 +79,56 @@ namespace Kantarv2.Handler.QueryHandler
             }
           
         }
+
+        public async Task<Response<string>> Handle(OverallPriceQuery request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                    ?? "Bilinmeyen Kullanıcı";
+                string cleanPrompt = request.Prompt.Trim().ToLower();
+                string cacheKey = $"Analysis:{ComputeHash(cleanPrompt)}";
+                string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
+                if (!string.IsNullOrEmpty(cachedResponse))
+                {
+                    _logger.LogInformation("Önbellekten {userid} tarafından LLM yanıtı alındı.", userId);
+                    return Response<string>.Success(200, cachedResponse);
+                }
+                var totalPrice = await _context.Products.Include(x => x.UnitPrice).Where(p => !p.IsDeleted).GroupBy(p => p.UnitPrice).Select(g => new ListProductByUnitDto()
+                {
+                    Name = g.Key.Name,
+                    TotalWeight = g.Sum(s => s.Weight).ToString() + " kg",
+                    TotalPrice = g.Sum(p => p.TotalPrice).ToString() + " TL"
+                }).ToListAsync(cancellationToken);
+                var totalPriceJson = System.Text.Json.JsonSerializer.Serialize(totalPrice);
+                var finalPrompt = $@"Aşağıdaki limandaki ürün verilerini kullanarak veri analisti olarak şu isteği yerine getir: '{request.Prompt}'
+                        {totalPriceJson}
+            
+                        Lütfen yanıtı Türkçe ve Markdown formatında ver. ";
+                var llmResponse = await _llmService.GenerateResponseAsync(finalPrompt);
+                var cacheOptions = new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(4)
+                };
+                await _cache.SetStringAsync(cacheKey, llmResponse, cacheOptions, cancellationToken);
+                _logger.LogInformation("LLM yanıtı {userid} tarafından başarıyla alındı.", userId);
+                return Response<string>.Success(200, llmResponse);
+            }
+
+            catch (Exception ex)
+            {
+                _logger.LogError("LLM yanıtı alınırken bir hata oluştu. {ex}",ex);
+                return Response<string>.Fail(500, "LLM yanıtı alınırken bir hata oluştu.");
+
+            }
+        }
+
         private string ComputeHash(string input)
         {
             using var md5 = System.Security.Cryptography.MD5.Create();
             var bytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
             return Convert.ToHexString(bytes);
+
         }
     }
 }
