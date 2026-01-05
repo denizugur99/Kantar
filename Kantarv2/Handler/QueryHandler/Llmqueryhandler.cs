@@ -33,6 +33,7 @@ namespace Kantarv2.Handler.QueryHandler
             {
                 var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                      ?? "Bilinmeyen Kullanıcı";
+             
                 string cleanPrompt = request.Prompt.Trim().ToLower();
                 string cacheKey = $"Analysis:Product:{ComputeHash(cleanPrompt)}";
                 string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
@@ -53,14 +54,19 @@ namespace Kantarv2.Handler.QueryHandler
                     CreatedDate = p.CreatedDate
                 }).ToListAsync(cancellationToken);
                 var productsJson = System.Text.Json.JsonSerializer.Serialize(products);
-                var finalPrompt = $@"
-            Aşağıdaki limandaki ürün verilerini kullanarak şu isteği yerine getir: '{request.Prompt}'
-            Statüsü bir olanla limandan çıkmış statüsü 2 olanlar ise şuan limandadır
-            {productsJson}
-            
-            Lütfen yanıtı Türkçe ve Markdown formatında ver.";
+                var chatMessages = new List<object>
+        {
+            new {
+                role = "system",
+                content = "Sen bir liman yönetim asistanısın. Ürün verilerini analiz edersin. Statü 1: Limandan Çıktı, Statü 2: Limanda demektir. Yanıtlarını her zaman Türkçe ve Markdown formatında ver."
+            },
+            new {
+                role = "user",
+                content = $"Soru: {request.Prompt}\n\nVeriler: {productsJson}"
+            }
+        };
 
-                var llmResponse = await _llmService.GenerateResponseAsync(finalPrompt);
+                var llmResponse = await _llmService.GenerateResponseAsync(chatMessages);
 
                 var cacheOptions = new DistributedCacheEntryOptions
                 {
@@ -86,6 +92,7 @@ namespace Kantarv2.Handler.QueryHandler
             {
                 var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                     ?? "Bilinmeyen Kullanıcı";
+                
                 string cleanPrompt = request.Prompt.Trim().ToLower();
                 string cacheKey = $"Analysis:Price:{ComputeHash(cleanPrompt)}";
                 string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
@@ -101,17 +108,26 @@ namespace Kantarv2.Handler.QueryHandler
                     TotalPrice = g.Sum(p => p.TotalPrice).ToString() + " TL"
                 }).ToListAsync(cancellationToken);
                 var totalPriceJson = System.Text.Json.JsonSerializer.Serialize(totalPrice);
-                var finalPrompt = $@"Aşağıdaki limandaki ürün verilerini kullanarak veri analisti olarak şu isteği yerine getir: '{request.Prompt}'
-                        {totalPriceJson}
-            
-                        Lütfen yanıtı Türkçe ve Markdown formatında ver. ";
-                var llmResponse = await _llmService.GenerateResponseAsync(finalPrompt);
+                var chatMessages = new List<object>
+        {
+            new {
+                role = "system",
+                content = "Sen bir liman yönetim asistanısın. Ürün verilerini analiz edersin. Statü 1: Limandan Çıktı, Statü 2: Limanda demektir. Yanıtlarını her zaman Türkçe ve Markdown formatında ver."
+            },
+            new {
+                role = "user",
+                content = $"Soru: {request.Prompt}\n\nVeriler: {totalPriceJson}"
+            }
+        };
+
+                var llmResponse = await _llmService.GenerateResponseAsync(chatMessages);
                 var cacheOptions = new DistributedCacheEntryOptions
                 {
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(4)
                 };
                 await _cache.SetStringAsync(cacheKey, llmResponse, cacheOptions, cancellationToken);
                 _logger.LogInformation("LLM yanıtı {userid} tarafından başarıyla alındı.", userId);
+                
                 return Response<string>.Success(200, llmResponse);
             }
 

@@ -2,6 +2,6 @@
 {
     public interface ILlmService
     {
-        Task<string> GenerateResponseAsync(string prompt);
+        Task<string> GenerateResponseAsync(List<object> chatMessages);
     }
 }

@@ -15,7 +15,7 @@ namespace Kantarv2.Services
             _configuration = configuration;
         }
 
-        public async Task<string> GenerateResponseAsync(string prompt)
+        public async Task<string> GenerateResponseAsync(List<object> chatMessages)
         {
 
            
@@ -25,15 +25,16 @@ namespace Kantarv2.Services
 
             var requestBody = new
             {
-                model = model,
-                messages = new[] { new {  content = prompt } }
+                model,
+                messages = chatMessages
             };
 
-           
-            _httpClient.DefaultRequestHeaders.Authorization = null;
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {apiKey.Trim()}");
 
-            var response = await _httpClient.PostAsJsonAsync(url, requestBody);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey?.Trim());
+            request.Content = JsonContent.Create(requestBody);
+
+            var response = await _httpClient.SendAsync(request);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
