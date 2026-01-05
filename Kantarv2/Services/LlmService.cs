@@ -26,7 +26,7 @@ namespace Kantarv2.Services
             var requestBody = new
             {
                 model = model,
-                messages = new[] { new { role = "user", content = prompt } }
+                messages = new[] { new {  content = prompt } }
             };
 
            
