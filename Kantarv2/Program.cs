@@ -26,8 +26,8 @@ builder.Services.AddDbContext<KantarDbContext>(options =>
 options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-// Configure Identity
-builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
+// Configure Identity (using AddIdentityCore for API with JWT)
+builder.Services.AddIdentityCore<User>(options =>
 {
     // Password settings
     options.Password.RequireDigit = false;
@@ -43,7 +43,9 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
     options.SignIn.RequireConfirmedEmail = false;
     options.SignIn.RequireConfirmedPhoneNumber = false;
 })
+.AddRoles<IdentityRole<int>>()
 .AddEntityFrameworkStores<KantarDbContext>()
+.AddSignInManager<User>()
 .AddDefaultTokenProviders();
 
 builder.Host.UseSerilog((context,LoggerConfiguration)=>
@@ -61,8 +63,16 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
 builder.Services.AddScoped<ITokenServiceInterface, TokenService>();
 builder.Services.AddScoped<IExcelServiceInterface, ExcelService>();
 builder.Services.AddScoped<RoleSeeder>();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
+builder.Services.AddAuthentication(options =>
 {
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.SaveToken = true;
+    options.RequireHttpsMetadata = false; // Set to true in production
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -70,11 +80,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         ValidateAudience = true,
         ValidAudience = builder.Configuration["AppSettings:Audience"],
         ValidateLifetime = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["AppSettings:Token"])),
         ValidateIssuerSigningKey = true,
-
-
-
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["AppSettings:Token"])),
+        ClockSkew = TimeSpan.Zero // Remove default 5 minute clock skew
     };
 });
 
