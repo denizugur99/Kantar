@@ -45,7 +45,7 @@ builder.Services.AddIdentityCore<User>(options =>
 })
 .AddRoles<IdentityRole<int>>()
 .AddEntityFrameworkStores<KantarDbContext>()
-.AddSignInManager<User>()
+.AddSignInManager()
 .AddDefaultTokenProviders();
 
 builder.Host.UseSerilog((context,LoggerConfiguration)=>
