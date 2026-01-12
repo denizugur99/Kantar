@@ -204,7 +204,7 @@ namespace Kantarv2.Handler.CommandHandler
                     return Response<NoContent>.Fail(400, "kullanıcı bulunamadı");
                 }
 
-                // Clear refresh token
+                // Clear refresh token (JWT is stateless, so we only invalidate the refresh token)
                 user.RefreshToken = null;
                 user.RefreshTokenExpireDate = null;
                 var result = await _userManager.UpdateAsync(user);
@@ -216,8 +216,9 @@ namespace Kantarv2.Handler.CommandHandler
                     return Response<NoContent>.Fail(500, "çıkış yapılamadı: " + errors);
                 }
 
-                // Also sign out from Identity
-                await _signInManager.SignOutAsync();
+                // Note: No need to call SignOutAsync() for JWT authentication
+                // JWT tokens are stateless and managed by the client
+                // We only invalidate the refresh token to prevent token renewal
 
                 _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı:{UserId}", request.UserId);
                 return Response<NoContent>.Success(204);
