@@ -1,5 +1,6 @@
 using Kantarv2.DAL;
 using Kantarv2.Entities;
+using Kantarv2.Middleware;
 using Kantarv2.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -62,6 +63,7 @@ var redisConnection = ConnectionMultiplexer.Connect("localhost:6379");
 builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
 builder.Services.AddScoped<ITokenServiceInterface, TokenService>();
 builder.Services.AddScoped<IExcelServiceInterface, ExcelService>();
+builder.Services.AddScoped<ITokenBlacklistService, TokenBlacklistService>();
 builder.Services.AddScoped<RoleSeeder>();
 builder.Services.AddAuthentication(options =>
 {
@@ -107,6 +109,10 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
+
+// Token blacklist kontrolü (Authentication'dan sonra, Authorization'dan önce)
+app.UseMiddleware<TokenBlacklistMiddleware>();
+
 app.UseAuthorization();
 
 app.MapControllers();

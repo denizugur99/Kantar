@@ -22,7 +22,7 @@ namespace Kantarv2.Handler.CommandHandler
         private readonly SignInManager<User> _signInManager;
         private readonly KantarDbContext _context;
         private readonly ITokenServiceInterface _tokenService;
-
+        private readonly ITokenBlacklistService _tokenBlacklistService;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public UserCommandHandler(
@@ -30,6 +30,7 @@ namespace Kantarv2.Handler.CommandHandler
             SignInManager<User> signInManager,
             KantarDbContext context,
             ITokenServiceInterface tokenService,
+            ITokenBlacklistService tokenBlacklistService,
             IHttpContextAccessor httpContextAccessor,
             ILogger<UserCommandHandler> logger)
         {
@@ -37,6 +38,7 @@ namespace Kantarv2.Handler.CommandHandler
             _signInManager = signInManager;
             _context = context;
             _tokenService = tokenService;
+            _tokenBlacklistService = tokenBlacklistService;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
         }
@@ -197,6 +199,21 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
+                // Authorization header'dan JWT token'ı al
+                var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].FirstOrDefault();
+                string jwtToken = null;
+
+                if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    jwtToken = authHeader.Substring("Bearer ".Length).Trim();
+                }
+
+                if (string.IsNullOrEmpty(jwtToken))
+                {
+                    _logger.LogWarning("Logout isteğinde JWT token bulunamadı");
+                    return Response<NoContent>.Fail(401, "Token bulunamadı");
+                }
+
                 // Get user ID from JWT token claims if not provided in request
                 int userId = request.UserId;
                 if (userId == 0)
@@ -220,7 +237,26 @@ namespace Kantarv2.Handler.CommandHandler
                     return Response<NoContent>.Fail(400, "kullanıcı bulunamadı veya refresh token geçersiz");
                 }
 
-                // Clear refresh token (JWT is stateless, so we only invalidate the refresh token)
+                // JWT token'ın expiration süresini al
+                var expClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("exp")?.Value;
+                TimeSpan tokenExpiration = TimeSpan.FromDays(1); // Default 1 gün
+
+                if (!string.IsNullOrEmpty(expClaim) && long.TryParse(expClaim, out long exp))
+                {
+                    var expirationDate = DateTimeOffset.FromUnixTimeSeconds(exp);
+                    var remainingTime = expirationDate - DateTimeOffset.UtcNow;
+
+                    // Eğer token hala geçerliyse, kalan süre kadar blacklist'te tut
+                    if (remainingTime > TimeSpan.Zero)
+                    {
+                        tokenExpiration = remainingTime;
+                    }
+                }
+
+                // JWT token'ı blacklist'e ekle
+                await _tokenBlacklistService.BlacklistTokenAsync(jwtToken, tokenExpiration);
+
+                // Clear refresh token
                 user.RefreshToken = null;
                 user.RefreshTokenExpireDate = null;
                 var result = await _userManager.UpdateAsync(user);
@@ -232,11 +268,7 @@ namespace Kantarv2.Handler.CommandHandler
                     return Response<NoContent>.Fail(500, "çıkış yapılamadı: " + errors);
                 }
 
-                // Note: No need to call SignOutAsync() for JWT authentication
-                // JWT tokens are stateless and managed by the client
-                // We only invalidate the refresh token to prevent token renewal
-
-                _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı:{UserId}", request.UserId);
+                _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı ve token blacklist'e eklendi:{UserId}", userId);
                 return Response<NoContent>.Success(204);
             }
             catch (Exception ex)
