@@ -23,17 +23,21 @@ namespace Kantarv2.Handler.CommandHandler
         private readonly KantarDbContext _context;
         private readonly ITokenServiceInterface _tokenService;
 
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
         public UserCommandHandler(
             UserManager<User> userManager,
             SignInManager<User> signInManager,
             KantarDbContext context,
             ITokenServiceInterface tokenService,
+            IHttpContextAccessor httpContextAccessor,
             ILogger<UserCommandHandler> logger)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _context = context;
             _tokenService = tokenService;
+            _httpContextAccessor = httpContextAccessor;
             _logger = logger;
         }
 
@@ -193,15 +197,27 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
+                // Get user ID from JWT token claims if not provided in request
+                int userId = request.UserId;
+                if (userId == 0)
+                {
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out userId))
+                    {
+                        _logger.LogWarning("Kullanıcı kimliği JWT token'dan alınamadı");
+                        return Response<NoContent>.Fail(401, "Geçersiz token");
+                    }
+                }
+
                 // Find user by ID and refresh token
                 var user = await _userManager.Users
-                    .Where(x => !x.IsDeleted && x.Id == request.UserId && x.RefreshToken == request.RefreshToken)
+                    .Where(x => !x.IsDeleted && x.Id == userId && x.RefreshToken == request.RefreshToken)
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (user == null)
                 {
-                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", request.UserId);
-                    return Response<NoContent>.Fail(400, "kullanıcı bulunamadı");
+                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", userId);
+                    return Response<NoContent>.Fail(400, "kullanıcı bulunamadı veya refresh token geçersiz");
                 }
 
                 // Clear refresh token (JWT is stateless, so we only invalidate the refresh token)
