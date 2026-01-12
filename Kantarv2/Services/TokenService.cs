@@ -1,6 +1,7 @@
 ﻿using Kantarv2.DAL;
 using Kantarv2.Dtos;
 using Kantarv2.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -14,19 +15,31 @@ namespace Kantarv2.Services
     {
         private readonly IConfiguration _configuration;
         private readonly KantarDbContext _context;
-        public TokenService(IConfiguration configuration, KantarDbContext context)
+        private readonly UserManager<User> _userManager;
+
+        public TokenService(IConfiguration configuration, KantarDbContext context, UserManager<User> userManager)
         {
             _context = context;
             _configuration = configuration;
+            _userManager = userManager;
         }
-        private string GenerateToken(User user)
+        private async Task<string> GenerateToken(User user, UserManager<User> userManager)
         {
+            // Get user roles from Identity
+            var roles = await userManager.GetRolesAsync(user);
+
             var claims = new List<Claim>()
             {
-                new Claim(ClaimTypes.NameIdentifier,user.Id.ToString()),
-                new Claim(ClaimTypes.Name,user.Username),
-                new Claim(ClaimTypes.Role,user.Role)
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+                new Claim(ClaimTypes.Email, user.Email ?? string.Empty)
             };
+
+            // Add all roles as claims
+            foreach (var role in roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration.GetValue<string>("Appsettings:Token")));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
             var tokenDescriptor = new JwtSecurityToken(
@@ -76,7 +89,7 @@ namespace Kantarv2.Services
         }
         public async Task<TokenDto> CreateTokens(User? user)
         {
-            var token = GenerateToken(user);
+            var token = await GenerateToken(user, _userManager);
             var refreshToken = await GenerateRefreshTokenAsync(user);
             return new TokenDto
             {

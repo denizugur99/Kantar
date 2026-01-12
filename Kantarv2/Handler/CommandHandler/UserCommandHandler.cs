@@ -7,6 +7,7 @@ using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 
 namespace Kantarv2.Handler.CommandHandler
 {
@@ -17,10 +18,20 @@ namespace Kantarv2.Handler.CommandHandler
         IRequestHandler<LogoutCommand, Response<NoContent>>
     {
         private readonly ILogger<UserCommandHandler> _logger;
+        private readonly UserManager<User> _userManager;
+        private readonly SignInManager<User> _signInManager;
         private readonly KantarDbContext _context;
         private readonly ITokenServiceInterface _tokenService;
-        public UserCommandHandler(KantarDbContext context,ITokenServiceInterface tokenService, ILogger<UserCommandHandler> logger)
+
+        public UserCommandHandler(
+            UserManager<User> userManager,
+            SignInManager<User> signInManager,
+            KantarDbContext context,
+            ITokenServiceInterface tokenService,
+            ILogger<UserCommandHandler> logger)
         {
+            _userManager = userManager;
+            _signInManager = signInManager;
             _context = context;
             _tokenService = tokenService;
             _logger = logger;
@@ -31,63 +42,81 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
-                var user = await _context.Users.Where(x => !x.IsDeleted && x.Username.Trim().ToLower() == request.Username.Trim().ToLower()).FirstOrDefaultAsync();
+                // Find user by username (UserName property from IdentityUser)
+                var user = await _userManager.Users
+                    .Where(x => !x.IsDeleted && x.UserName.ToLower() == request.Username.Trim().ToLower())
+                    .FirstOrDefaultAsync(cancellationToken);
+
                 if (user == null)
                 {
-                    _logger.LogWarning("Kullanıcı bulunamadı:{Username}" , request.Username);
+                    _logger.LogWarning("Kullanıcı bulunamadı:{Username}", request.Username);
                     return Response<TokenDto>.Fail(500, "kullanıcı bulunamadı veya parola hatalı");
                 }
-                var passwordVerificationResult = new PasswordHasher<User>().VerifyHashedPassword(user, user.PasswordHash, request.Password);
-                if (passwordVerificationResult == PasswordVerificationResult.Failed)
+
+                // Use SignInManager to check password
+                var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: false);
+
+                if (!result.Succeeded)
                 {
-                    _logger.LogWarning("Parola hatalı:{Username}" , request.Username);
+                    _logger.LogWarning("Parola hatalı:{Username}", request.Username);
                     return Response<TokenDto>.Fail(500, "kullanıcı bulunamadı veya parola hatalı");
                 }
-                else
-                {
-                    var token = await _tokenService.CreateTokens(user);
-                    _logger.LogInformation("Kullanıcı başarıyla giriş yaptı:{user.Username}" , user.Username);
-                    return Response<TokenDto>.Success(200, token);
-                    
-                }
+
+                var token = await _tokenService.CreateTokens(user);
+                _logger.LogInformation("Kullanıcı başarıyla giriş yaptı:{Username}", user.UserName);
+                return Response<TokenDto>.Success(200, token);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Kullanıcı giriş yaparken hata oluştu:{Error}" , ex.Message);
-                return Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu "+ex);
+                _logger.LogError("Kullanıcı giriş yaparken hata oluştu:{Error}", ex.Message);
+                return Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
-           
         }
 
         public async Task<Response<NoContent>> Handle(RegisterCommand request, CancellationToken cancellationToken)
         {
             try
-             {
-             var userExists = _context.Users.Any(u => u.Username.Trim().ToLower() == request.Username.Trim().ToLower());
-                if (userExists) {
-                    _logger.LogWarning("Kullanıcı zaten mevcut:{Username}" , request.Username);
+            {
+                // Check if user exists by username
+                var userExists = await _userManager.FindByNameAsync(request.Username.Trim());
+                if (userExists != null)
+                {
+                    _logger.LogWarning("Kullanıcı zaten mevcut:{Username}", request.Username);
                     return Response<NoContent>.Fail(500, "kullanıcı zaten mevcut");
                 }
-                else
+
+                var user = new User
                 {
-                    var user = new User();
-                    user.Username = request.Username.Trim();
-                    user.Email = request.Email.Trim();
-                    user.PasswordHash = new PasswordHasher<User>().HashPassword(user, request.Password.Trim());
-                    user.Role=request.Role.Trim()   ;
-                    user.IsDeleted = false;
-                    
-                    _context.Users.Add(user);
-                    await  _context.SaveChangesAsync();
-                    _logger.LogInformation("Kullanıcı başarıyla kaydedildi:{Username}" , request.Username);
-                    return Response<NoContent>.Success(200);
+                    UserName = request.Username.Trim(),
+                    Email = request.Email.Trim(),
+                    IsDeleted = false
+                };
+
+                // Create user with UserManager (handles password hashing automatically)
+                var result = await _userManager.CreateAsync(user, request.Password.Trim());
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    _logger.LogError("Kullanıcı oluşturulurken hata: {Errors}", errors);
+                    return Response<NoContent>.Fail(500, "kullanıcı oluşturulamadı: " + errors);
                 }
 
+                // Assign role using UserManager
+                var roleResult = await _userManager.AddToRoleAsync(user, request.Role.Trim());
+                if (!roleResult.Succeeded)
+                {
+                    _logger.LogWarning("Rol atanamadı:{Username}, Role:{Role}", request.Username, request.Role);
+                    // Note: User is created but role assignment failed
+                }
+
+                _logger.LogInformation("Kullanıcı başarıyla kaydedildi:{Username}", request.Username);
+                return Response<NoContent>.Success(200);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Kullanıcı kaydederken hata oluştu:{Error}" , ex.Message);
-                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu "+ ex);
+                _logger.LogError("Kullanıcı kaydederken hata oluştu:{Error}", ex.Message);
+                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
@@ -95,21 +124,32 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
-                var user =await _context.Users.Where(x => !x.IsDeleted && x.Id == request.UserId).FirstOrDefaultAsync(cancellationToken);
+                // Find user by ID using UserManager
+                var user = await _userManager.Users
+                    .Where(x => !x.IsDeleted && x.Id == request.UserId)
+                    .FirstOrDefaultAsync(cancellationToken);
+
                 if (user == null)
                 {
-                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}" , request.UserId);
+                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", request.UserId);
                     return Response<TokenDto>.Fail(500, "kullanıcı bulunamadı");
                 }
-                var token = await _tokenService.RefreshTokenAsync(user.Id,user.RefreshToken,cancellationToken);
-                _logger.LogInformation("Token başarıyla yenilendi:{UserId}" , request.UserId);
-                return Response<TokenDto>.Success(200, token);
 
+                var token = await _tokenService.RefreshTokenAsync(user.Id, user.RefreshToken, cancellationToken);
+
+                if (token == null)
+                {
+                    _logger.LogWarning("Token yenilenemedi:{UserId}", request.UserId);
+                    return Response<TokenDto>.Fail(500, "token geçersiz veya süresi dolmuş");
+                }
+
+                _logger.LogInformation("Token başarıyla yenilendi:{UserId}", request.UserId);
+                return Response<TokenDto>.Success(200, token);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Token yenilenirken hata oluştu:{Error}" , ex.Message);
-                return Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu "+ ex);
+                _logger.LogError("Token yenilenirken hata oluştu:{Error}", ex.Message);
+                return Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
@@ -117,24 +157,35 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
-                var user = await _context.Users.Where(x => !x.IsDeleted && x.Id == request.Id).FirstOrDefaultAsync(cancellationToken);
+                // Find user by ID
+                var user = await _userManager.Users
+                    .Where(x => !x.IsDeleted && x.Id == request.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+
                 if (user == null)
                 {
-                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}" , request.Id);
+                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", request.Id);
                     return Response<NoContent>.Fail(500, "kullanıcı bulunamadı");
                 }
-                user.IsDeleted = true;
-                _context.Users.Update(user);
-                await _context.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Kullanıcı başarıyla silindi:{UserId}" , request.Id);
-                return Response<NoContent>.Success(200);
 
+                // Soft delete by setting IsDeleted flag
+                user.IsDeleted = true;
+                var result = await _userManager.UpdateAsync(user);
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    _logger.LogError("Kullanıcı silinirken hata:{Errors}", errors);
+                    return Response<NoContent>.Fail(500, "kullanıcı silinemedi: " + errors);
+                }
+
+                _logger.LogInformation("Kullanıcı başarıyla silindi:{UserId}", request.Id);
+                return Response<NoContent>.Success(200);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Kullanıcı silinirken hata oluştu:{Error}" , ex.Message);
-                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu "+ ex);
-
+                _logger.LogError("Kullanıcı silinirken hata oluştu:{Error}", ex.Message);
+                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
@@ -142,25 +193,39 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
-                var user =  _context.Users.Where(x => !x.IsDeleted && x.Id == request.UserId&& x.RefreshToken==request.RefreshToken).FirstOrDefault();
+                // Find user by ID and refresh token
+                var user = await _userManager.Users
+                    .Where(x => !x.IsDeleted && x.Id == request.UserId && x.RefreshToken == request.RefreshToken)
+                    .FirstOrDefaultAsync(cancellationToken);
+
                 if (user == null)
                 {
-                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}" , request.UserId);
+                    _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", request.UserId);
                     return Response<NoContent>.Fail(400, "kullanıcı bulunamadı");
                 }
-                user.RefreshToken = null;
-                user.RefreshTokenExpireDate=null;
-                _context.Users.Update(user);
-                await _context.SaveChangesAsync();
-                _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı:{UserId}" , request.UserId);
-                return Response<NoContent>.Success(204);
 
+                // Clear refresh token
+                user.RefreshToken = null;
+                user.RefreshTokenExpireDate = null;
+                var result = await _userManager.UpdateAsync(user);
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    _logger.LogError("Çıkış yaparken hata:{Errors}", errors);
+                    return Response<NoContent>.Fail(500, "çıkış yapılamadı: " + errors);
+                }
+
+                // Also sign out from Identity
+                await _signInManager.SignOutAsync();
+
+                _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı:{UserId}", request.UserId);
+                return Response<NoContent>.Success(204);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Kullanıcı çıkış yaparken hata oluştu:{Error}" , ex.Message);
-                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu "+ ex);
-
+                _logger.LogError("Kullanıcı çıkış yaparken hata oluştu:{Error}", ex.Message);
+                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
     }

@@ -1,14 +1,15 @@
-﻿namespace Kantarv2.Entities
+﻿using Microsoft.AspNetCore.Identity;
+
+namespace Kantarv2.Entities
 {
-    public class User
+    public class User : IdentityUser<int>
     {
-        public int Id { get; set; }
-        public string Username { get; set; }
-        public string Email { get; set; }
-        public string PasswordHash { get; set; }
-        public string Role { get; set; }
+        // Custom properties beyond IdentityUser
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpireDate { get; set; }
-        public Boolean IsDeleted { get; set; }
+        public bool IsDeleted { get; set; }
+
+        // Note: Id, UserName, Email, PasswordHash are inherited from IdentityUser
+        // EmailConfirmed, PhoneNumber, PhoneNumberConfirmed, TwoFactorEnabled, etc. are also available
     }
 }
