@@ -1,6 +1,7 @@
 ﻿using Kantarv2.DAL;
 using Kantarv2.Dtos;
 using Kantarv2.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -14,26 +15,43 @@ namespace Kantarv2.Services
     {
         private readonly IConfiguration _configuration;
         private readonly KantarDbContext _context;
-        public TokenService(IConfiguration configuration, KantarDbContext context)
+        private readonly UserManager<User> _userManager;
+
+        public TokenService(IConfiguration configuration, KantarDbContext context, UserManager<User> userManager)
         {
             _context = context;
             _configuration = configuration;
+            _userManager = userManager;
         }
-        private string GenerateToken(User user)
+        private async Task<string> GenerateToken(User user, UserManager<User> userManager)
         {
+            // Get user roles from Identity
+            var roles = await userManager.GetRolesAsync(user);
+
             var claims = new List<Claim>()
             {
-                new Claim(ClaimTypes.NameIdentifier,user.Id.ToString()),
-                new Claim(ClaimTypes.Name,user.Username),
-                new Claim(ClaimTypes.Role,user.Role)
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+                new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
+                // SecurityStamp - token invalidation için kritik!
+                new Claim("security_stamp", user.SecurityStamp ?? string.Empty),
+                // RefreshTokenVersion - refresh token rotation için
+                new Claim("refresh_token_version", user.RefreshTokenVersion.ToString())
             };
+
+            // Add all roles as claims
+            foreach (var role in roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration.GetValue<string>("Appsettings:Token")));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
             var tokenDescriptor = new JwtSecurityToken(
                 issuer: _configuration.GetValue<string>("Appsettings:Issuer"),
                 audience: _configuration.GetValue<string>("Appsettings:Audience"),
                 claims: claims,
-                expires: DateTime.Now.AddDays(1),
+                expires: DateTime.UtcNow.AddMinutes(15), // 1 gün -> 15 dakika
                 signingCredentials: creds
                 );
             return new JwtSecurityTokenHandler().WriteToken(tokenDescriptor);
@@ -47,37 +65,63 @@ namespace Kantarv2.Services
                 return Convert.ToBase64String(randomNumber);
             }
         }
-        private async Task<User?> ValidateTokenAsync(int userid, string refreshtoken)
+        private async Task<User?> ValidateRefreshTokenAsync(int userid, string refreshtoken)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userid);
-            if (user == null || user.RefreshToken != refreshtoken || user.RefreshTokenExpireDate <= DateTime.Now)
-            {
-                return null;
-            }
-            return user;
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userid && !u.IsDeleted);
 
-        }
-        private async Task<string> GenerateRefreshTokenAsync(User user)
-        {
-            var refreshToken = GenerateRefreshToken();
-            user.RefreshToken = refreshToken;
-            user.RefreshTokenExpireDate = DateTime.Now.AddDays(1);
-            await _context.SaveChangesAsync();
-            return refreshToken;
-        }
-        public async Task<TokenDto?> RefreshTokenAsync(int userid, string refreshtoken,CancellationToken cancellationToken)
-        {
-            var user = await ValidateTokenAsync(userid, refreshtoken);
             if (user == null)
             {
                 return null;
             }
+
+            // Refresh token kontrolü
+            if (user.RefreshToken != refreshtoken)
+            {
+                return null;
+            }
+
+            // Expiration kontrolü
+            if (user.RefreshTokenExpireDate <= DateTime.UtcNow)
+            {
+                return null;
+            }
+
+            return user;
+        }
+
+        private async Task<string> GenerateAndSaveRefreshTokenAsync(User user)
+        {
+            var refreshToken = GenerateRefreshToken();
+
+            // ROTATION: Her yeni refresh token generation'da version artır
+            user.RefreshTokenVersion++;
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpireDate = DateTime.UtcNow.AddDays(30); // 1 gün -> 30 gün
+
+            await _userManager.UpdateAsync(user);
+
+            return refreshToken;
+        }
+
+        public async Task<TokenDto?> RefreshTokenAsync(int userid, string refreshtoken, CancellationToken cancellationToken)
+        {
+            // Validate refresh token
+            var user = await ValidateRefreshTokenAsync(userid, refreshtoken);
+
+            if (user == null)
+            {
+                return null;
+            }
+
+            // ROTATION: Yeni token + yeni refresh token üret
+            // Eski refresh token otomatik geçersiz olur
             return await CreateTokens(user);
         }
         public async Task<TokenDto> CreateTokens(User? user)
         {
-            var token = GenerateToken(user);
-            var refreshToken = await GenerateRefreshTokenAsync(user);
+            var token = await GenerateToken(user, _userManager);
+            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user);
+
             return new TokenDto
             {
                 Token = token,

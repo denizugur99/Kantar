@@ -3,6 +3,7 @@ using System;
 using Kantarv2.DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Kantarv2.Migrations
 {
     [DbContext(typeof(KantarDbContext))]
-    partial class KantarDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260112200307_Inital")]
+    partial class Inital
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -130,9 +133,6 @@ namespace Kantarv2.Migrations
 
                     b.Property<DateTime?>("RefreshTokenExpireDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("RefreshTokenVersion")
-                        .HasColumnType("integer");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
