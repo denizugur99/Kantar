@@ -22,7 +22,6 @@ namespace Kantarv2.Handler.CommandHandler
         private readonly SignInManager<User> _signInManager;
         private readonly KantarDbContext _context;
         private readonly ITokenServiceInterface _tokenService;
-        private readonly ITokenBlacklistService _tokenBlacklistService;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public UserCommandHandler(
@@ -30,7 +29,6 @@ namespace Kantarv2.Handler.CommandHandler
             SignInManager<User> signInManager,
             KantarDbContext context,
             ITokenServiceInterface tokenService,
-            ITokenBlacklistService tokenBlacklistService,
             IHttpContextAccessor httpContextAccessor,
             ILogger<UserCommandHandler> logger)
         {
@@ -38,7 +36,6 @@ namespace Kantarv2.Handler.CommandHandler
             _signInManager = signInManager;
             _context = context;
             _tokenService = tokenService;
-            _tokenBlacklistService = tokenBlacklistService;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
         }
@@ -199,21 +196,6 @@ namespace Kantarv2.Handler.CommandHandler
         {
             try
             {
-                // Authorization header'dan JWT token'ı al
-                var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].FirstOrDefault();
-                string jwtToken = null;
-
-                if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                {
-                    jwtToken = authHeader.Substring("Bearer ".Length).Trim();
-                }
-
-                if (string.IsNullOrEmpty(jwtToken))
-                {
-                    _logger.LogWarning("Logout isteğinde JWT token bulunamadı");
-                    return Response<NoContent>.Fail(401, "Token bulunamadı");
-                }
-
                 // Get user ID from JWT token claims if not provided in request
                 int userId = request.UserId;
                 if (userId == 0)
@@ -226,49 +208,34 @@ namespace Kantarv2.Handler.CommandHandler
                     }
                 }
 
-                // Find user by ID and refresh token
+                // Find user by ID
                 var user = await _userManager.Users
-                    .Where(x => !x.IsDeleted && x.Id == userId && x.RefreshToken == request.RefreshToken)
+                    .Where(x => !x.IsDeleted && x.Id == userId)
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (user == null)
                 {
                     _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", userId);
-                    return Response<NoContent>.Fail(400, "kullanıcı bulunamadı veya refresh token geçersiz");
+                    return Response<NoContent>.Fail(400, "kullanıcı bulunamadı");
                 }
 
-                // JWT token'ın expiration süresini al
-                var expClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("exp")?.Value;
-                TimeSpan tokenExpiration = TimeSpan.FromDays(1); // Default 1 gün
-
-                if (!string.IsNullOrEmpty(expClaim) && long.TryParse(expClaim, out long exp))
+                // Refresh token kontrolü (opsiyonel - güvenlik için)
+                if (!string.IsNullOrEmpty(request.RefreshToken) && user.RefreshToken != request.RefreshToken)
                 {
-                    var expirationDate = DateTimeOffset.FromUnixTimeSeconds(exp);
-                    var remainingTime = expirationDate - DateTimeOffset.UtcNow;
-
-                    // Eğer token hala geçerliyse, kalan süre kadar blacklist'te tut
-                    if (remainingTime > TimeSpan.Zero)
-                    {
-                        tokenExpiration = remainingTime;
-                    }
+                    _logger.LogWarning("Geçersiz refresh token:{UserId}", userId);
+                    return Response<NoContent>.Fail(400, "Geçersiz refresh token");
                 }
 
-                // JWT token'ı blacklist'e ekle
-                await _tokenBlacklistService.BlacklistTokenAsync(jwtToken, tokenExpiration);
+                // CRITICAL: SecurityStamp'i güncelle - Tüm mevcut token'lar anında geçersiz olur!
+                await _userManager.UpdateSecurityStampAsync(user);
 
                 // Clear refresh token
                 user.RefreshToken = null;
                 user.RefreshTokenExpireDate = null;
-                var result = await _userManager.UpdateAsync(user);
+                user.RefreshTokenVersion = 0; // Reset version
+                await _userManager.UpdateAsync(user);
 
-                if (!result.Succeeded)
-                {
-                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                    _logger.LogError("Çıkış yaparken hata:{Errors}", errors);
-                    return Response<NoContent>.Fail(500, "çıkış yapılamadı: " + errors);
-                }
-
-                _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı ve token blacklist'e eklendi:{UserId}", userId);
+                _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı. SecurityStamp güncellendi, tüm token'lar geçersiz:{UserId}", userId);
                 return Response<NoContent>.Success(204);
             }
             catch (Exception ex)
