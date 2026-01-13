@@ -17,11 +17,9 @@ namespace Kantarv2.Services
 
         public async Task<string> GenerateResponseAsync(List<object> chatMessages)
         {
-
-           
-            var apiKey = "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";
-            var model = "llama-3.1-8b-instant"; 
-            var url = "https://api.groq.com/openai/v1/chat/completions";
+            var apiKey = _configuration["Groq:ApiKey"];
+            var model = _configuration["Groq:Model"] ?? "llama-3.1-8b-instant";
+            var url = _configuration["Groq:Endpoint"] ?? "https://api.groq.com/openai/v1/chat/completions";
 
             var requestBody = new
             {

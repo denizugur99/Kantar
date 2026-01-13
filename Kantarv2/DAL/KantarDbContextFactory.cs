@@ -11,10 +11,14 @@ namespace Kantarv2.DAL
     {
         public KantarDbContext CreateDbContext(string[] args)
         {
+            // Get environment (default to Development for migrations)
+            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development";
+
             // Build configuration
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: true)
                 .Build();
 
             // Create DbContext options

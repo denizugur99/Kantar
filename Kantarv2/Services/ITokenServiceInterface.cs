@@ -7,7 +7,7 @@ namespace Kantarv2.Services
     {
      
         Task<TokenDto> CreateTokens(User? user);
-        Task<TokenDto> RefreshTokenAsync(int userid, string refreshtoken,CancellationToken cancellationToken);
+        Task<TokenDto> RefreshTokenAsync(Guid userid, string refreshtoken,CancellationToken cancellationToken);
        
     }
 }

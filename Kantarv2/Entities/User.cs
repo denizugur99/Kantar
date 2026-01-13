@@ -2,7 +2,7 @@
 
 namespace Kantarv2.Entities
 {
-    public class User : IdentityUser<int>
+    public class User : IdentityUser<Guid>
     {
         // Custom properties beyond IdentityUser
         public string? RefreshToken { get; set; }

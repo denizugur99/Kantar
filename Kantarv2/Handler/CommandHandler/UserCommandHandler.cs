@@ -197,11 +197,11 @@ namespace Kantarv2.Handler.CommandHandler
             try
             {
                 // Get user ID from JWT token claims if not provided in request
-                int userId = request.UserId;
-                if (userId == 0)
+                Guid userId = request.UserId;
+                if (userId == Guid.Empty)
                 {
                     var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                    if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out userId))
+                    if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out userId))
                     {
                         _logger.LogWarning("Kullanıcı kimliği JWT token'dan alınamadı");
                         return Response<NoContent>.Fail(401, "Geçersiz token");

@@ -65,7 +65,7 @@ namespace Kantarv2.Services
                 return Convert.ToBase64String(randomNumber);
             }
         }
-        private async Task<User?> ValidateRefreshTokenAsync(int userid, string refreshtoken)
+        private async Task<User?> ValidateRefreshTokenAsync(Guid userid, string refreshtoken)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userid && !u.IsDeleted);
 
@@ -103,7 +103,7 @@ namespace Kantarv2.Services
             return refreshToken;
         }
 
-        public async Task<TokenDto?> RefreshTokenAsync(int userid, string refreshtoken, CancellationToken cancellationToken)
+        public async Task<TokenDto?> RefreshTokenAsync(Guid userid, string refreshtoken, CancellationToken cancellationToken)
         {
             // Validate refresh token
             var user = await ValidateRefreshTokenAsync(userid, refreshtoken);

@@ -9,8 +9,8 @@ namespace Kantarv2.Command.User
         public string RefreshToken { get; set; }
 
         /// <summary>
-        /// User ID - Optional. If not provided (0), will be extracted from JWT token claims.
+        /// User ID - Optional. If not provided (Guid.Empty), will be extracted from JWT token claims.
         /// </summary>
-        public int UserId { get; set; } = 0;
+        public Guid UserId { get; set; } = Guid.Empty;
     }
 }

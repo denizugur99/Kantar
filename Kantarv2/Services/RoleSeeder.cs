@@ -5,10 +5,10 @@ namespace Kantarv2.Services
 {
     public class RoleSeeder
     {
-        private readonly RoleManager<IdentityRole<int>> _roleManager;
+        private readonly RoleManager<IdentityRole<Guid>> _roleManager;
         private readonly ILogger<RoleSeeder> _logger;
 
-        public RoleSeeder(RoleManager<IdentityRole<int>> roleManager, ILogger<RoleSeeder> logger)
+        public RoleSeeder(RoleManager<IdentityRole<Guid>> roleManager, ILogger<RoleSeeder> logger)
         {
             _roleManager = roleManager;
             _logger = logger;
@@ -23,7 +23,7 @@ namespace Kantarv2.Services
                 var roleExists = await _roleManager.RoleExistsAsync(roleName);
                 if (!roleExists)
                 {
-                    var role = new IdentityRole<int>(roleName);
+                    var role = new IdentityRole<Guid>(roleName);
                     var result = await _roleManager.CreateAsync(role);
 
                     if (result.Succeeded)

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Kantarv2.DAL
 {
-    public class KantarDbContext : IdentityDbContext<User, IdentityRole<int>, int>
+    public class KantarDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     {
         public KantarDbContext(DbContextOptions<KantarDbContext> options) : base(options)
         {

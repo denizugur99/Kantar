@@ -44,7 +44,7 @@ builder.Services.AddIdentityCore<User>(options =>
     options.SignIn.RequireConfirmedEmail = false;
     options.SignIn.RequireConfirmedPhoneNumber = false;
 })
-.AddRoles<IdentityRole<int>>()
+.AddRoles<IdentityRole<Guid>>()
 .AddEntityFrameworkStores<KantarDbContext>()
 .AddSignInManager()
 .AddDefaultTokenProviders();
@@ -54,12 +54,13 @@ builder.Host.UseSerilog((context,LoggerConfiguration)=>
     LoggerConfiguration
     .ReadFrom.Configuration(context.Configuration);
 });
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis") ;
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration ="localhost:6379";
+    options.Configuration = redisConnectionString;
     options.InstanceName = "Kantarv2_";
 });
-var redisConnection = ConnectionMultiplexer.Connect("localhost:6379");
+var redisConnection = ConnectionMultiplexer.Connect(redisConnectionString);
 builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
 builder.Services.AddScoped<ITokenServiceInterface, TokenService>();
 builder.Services.AddScoped<IExcelServiceInterface, ExcelService>();
@@ -95,7 +96,7 @@ builder.Services.AddAuthentication(options =>
 
             var userIdClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
                 context.Fail("Invalid token: User ID claim missing");
                 return;

@@ -52,14 +52,14 @@ namespace Kantarv2.Controllers
         }
         [Authorize(Roles = "SuperAdmin")]
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<IActionResult> GetById(Guid id)
         {
             var result = await _mediator.Send(new FindUserById { Id = id });
             return CreateActionResultInstance(result);
         }
         [Authorize(Roles = "SuperAdmin")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteUser(int id)
+        public async Task<IActionResult> DeleteUser(Guid id)
         {
             var result = await _mediator.Send( new DeleteUser { Id = id });
             return CreateActionResultInstance(result);
