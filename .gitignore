@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Production appsettings (contains sensitive data - passwords, API keys, connection strings)
+appsettings.Production.json
+**/appsettings.Production.json
