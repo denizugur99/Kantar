@@ -1,4 +1,3 @@
-﻿using DocumentFormat.OpenXml.Bibliography;
 using Kantarv2.DAL;
 using Kantarv2.Dtos;
 using Kantarv2.Queries.Llm;
@@ -10,61 +9,98 @@ using System.Security.Claims;
 
 namespace Kantarv2.Handler.QueryHandler
 {
-    public class Llmqueryhandler : IRequestHandler<Productaskllmquery, Response<string>>,
-        IRequestHandler<OverallPriceQuery, Response<string>>
+    public class Llmqueryhandler : IRequestHandler<AskLlmQuery, Response<string>>
     {
         private readonly IDistributedCache _cache;
         private readonly ILogger<Llmqueryhandler> _logger;
         private readonly KantarDbContext _context;
         private readonly ILlmService _llmService;
         private readonly IHttpContextAccessor _httpContextAccessor;
-        public Llmqueryhandler(IHttpContextAccessor httpContextAccessor, IDistributedCache cache,ILogger<Llmqueryhandler> logger, KantarDbContext context, ILlmService llmService)
+        private readonly IWebHostEnvironment _environment;
+
+        public Llmqueryhandler(
+            IHttpContextAccessor httpContextAccessor,
+            IDistributedCache cache,
+            ILogger<Llmqueryhandler> logger,
+            KantarDbContext context,
+            ILlmService llmService,
+            IWebHostEnvironment environment)
         {
             _httpContextAccessor = httpContextAccessor;
             _cache = cache;
             _logger = logger;
             _context = context;
             _llmService = llmService;
+            _environment = environment;
         }
 
-        public async Task<Response<string>> Handle(Productaskllmquery request, CancellationToken cancellationToken)
+        public async Task<Response<string>> Handle(AskLlmQuery request, CancellationToken cancellationToken)
         {
             try
             {
                 var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                     ?? "Bilinmeyen Kullanıcı";
-             
+                     ?? "Bilinmeyen Kullanici";
+
                 string cleanPrompt = request.Prompt.Trim().ToLower();
-                string cacheKey = $"Analysis:Product:{ComputeHash(cleanPrompt)}";
+                string cacheKey = $"Analysis:Llm:{ComputeHash(cleanPrompt)}";
                 string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
-                
+
                 if (!string.IsNullOrEmpty(cachedResponse))
                 {
-                    _logger.LogInformation("Önbellekten {userid} tarafından LLM yanıtı alındı.",userId);
+                    _logger.LogInformation("Onbellekten {userid} tarafindan LLM yaniti alindi.", userId);
                     return Response<string>.Success(200, cachedResponse);
                 }
-                var products = await _context.Products.Include(p => p.UnitPrice).Where(p => !p.IsDeleted).Select(p => new ListProductDto()
-            {
-                    Id = p.Id,
-                    Name = p.UnitPrice.Name,
-                    Status = p.Status,
-                    Kilogram = p.Weight.ToString() + "kg",
-                    Price = p.Price,
-                    TotalPrice = p.TotalPrice,
-                    CreatedDate = p.CreatedDate
-                }).ToListAsync(cancellationToken);
+
+                // Urun detaylari
+                var products = await _context.Products
+                    .Include(p => p.UnitPrice)
+                    .Where(p => !p.IsDeleted)
+                    .Select(p => new ListProductDto()
+                    {
+                        Id = p.Id,
+                        Name = p.UnitPrice.Name,
+                        Status = p.Status,
+                        Kilogram = p.Weight.ToString() + "kg",
+                        Price = p.Price,
+                        TotalPrice = p.TotalPrice,
+                        CreatedDate = p.CreatedDate
+                    }).ToListAsync(cancellationToken);
+
+                // Fiyat ozeti
+                var priceSummary = await _context.Products
+                    .Include(x => x.UnitPrice)
+                    .Where(p => !p.IsDeleted)
+                    .GroupBy(p => p.UnitPrice)
+                    .Select(g => new ListProductByUnitDto()
+                    {
+                        Name = g.Key.Name,
+                        TotalWeight = g.Sum(s => s.Weight).ToString() + " kg",
+                        TotalPrice = g.Sum(p => p.TotalPrice).ToString() + " TL"
+                    }).ToListAsync(cancellationToken);
+
                 var productsJson = System.Text.Json.JsonSerializer.Serialize(products);
+                var priceSummaryJson = System.Text.Json.JsonSerializer.Serialize(priceSummary);
+
+                // System prompt'u MD dosyasindan oku
+                var systemPrompt = await GetSystemPromptAsync();
+
                 var chatMessages = new List<object>
-        {
-            new {
-                role = "system",
-                content = "Sen bir liman yönetim asistanısın. Ürün verilerini analiz edersin. Statü 1: Limandan Çıktı, Statü 2: Limanda demektir. Yanıtlarını her zaman Türkçe ve Markdown formatında ver."
-            },
-            new {
-                role = "user",
-                content = $"Soru: {request.Prompt}\n\nVeriler: {productsJson}"
-            }
-        };
+                {
+                    new {
+                        role = "system",
+                        content = systemPrompt
+                    },
+                    new {
+                        role = "user",
+                        content = $@"Soru: {request.Prompt}
+
+## Products (Urun Detaylari)
+{productsJson}
+
+## PriceSummary (Fiyat Ozeti)
+{priceSummaryJson}"
+                    }
+                };
 
                 var llmResponse = await _llmService.GenerateResponseAsync(chatMessages);
 
@@ -73,70 +109,30 @@ namespace Kantarv2.Handler.QueryHandler
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(4)
                 };
                 await _cache.SetStringAsync(cacheKey, llmResponse, cacheOptions, cancellationToken);
-                _logger.LogInformation("LLM yanıtı {userid} tarafından başarıyla alındı.",userId);
+                _logger.LogInformation("LLM yaniti {userid} tarafindan basariyla alindi.", userId);
                 return Response<string>.Success(200, llmResponse);
             }
             catch (Exception ex)
             {
-                _logger.LogError("LLM yanıtı alınırken bir hata oluştu.");
-                return Response<string>.Fail(500, "LLM yanıtı alınırken bir hata oluştu.");
-
-
+                _logger.LogError("LLM yaniti alinirken bir hata olustu: {ex}", ex);
+                return Response<string>.Fail(500, "LLM yaniti alinirken bir hata olustu.");
             }
-          
         }
 
-        public async Task<Response<string>> Handle(OverallPriceQuery request, CancellationToken cancellationToken)
+        private async Task<string> GetSystemPromptAsync()
         {
-            try
+            var promptPath = Path.Combine(_environment.ContentRootPath, "Prompts", "LlmSystemPrompt.md");
+
+            if (File.Exists(promptPath))
             {
-                var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                    ?? "Bilinmeyen Kullanıcı";
-                
-                string cleanPrompt = request.Prompt.Trim().ToLower();
-                string cacheKey = $"Analysis:Price:{ComputeHash(cleanPrompt)}";
-                string? cachedResponse = await _cache.GetStringAsync(cacheKey, cancellationToken);
-                if (!string.IsNullOrEmpty(cachedResponse))
-                {
-                    _logger.LogInformation("Önbellekten {userid} tarafından LLM yanıtı alındı.", userId);
-                    return Response<string>.Success(200, cachedResponse);
-                }
-                var totalPrice = await _context.Products.Include(x => x.UnitPrice).Where(p => !p.IsDeleted).GroupBy(p => p.UnitPrice).Select(g => new ListProductByUnitDto()
-                {
-                    Name = g.Key.Name,
-                    TotalWeight = g.Sum(s => s.Weight).ToString() + " kg",
-                    TotalPrice = g.Sum(p => p.TotalPrice).ToString() + " TL"
-                }).ToListAsync(cancellationToken);
-                var totalPriceJson = System.Text.Json.JsonSerializer.Serialize(totalPrice);
-                var chatMessages = new List<object>
-        {
-            new {
-                role = "system",
-                content = "Sen bir liman yönetim asistanısın. Ürün verilerini analiz edersin. Statü 1: Limandan Çıktı, Statü 2: Limanda demektir. Yanıtlarını her zaman Türkçe ve Markdown formatında ver."
-            },
-            new {
-                role = "user",
-                content = $"Soru: {request.Prompt}\n\nVeriler: {totalPriceJson}"
-            }
-        };
-
-                var llmResponse = await _llmService.GenerateResponseAsync(chatMessages);
-                var cacheOptions = new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(4)
-                };
-                await _cache.SetStringAsync(cacheKey, llmResponse, cacheOptions, cancellationToken);
-                _logger.LogInformation("LLM yanıtı {userid} tarafından başarıyla alındı.", userId);
-                
-                return Response<string>.Success(200, llmResponse);
+                return await File.ReadAllTextAsync(promptPath);
             }
 
-            catch (Exception ex)
-            {
-                _logger.LogError("LLM yanıtı alınırken bir hata oluştu. {ex}",ex);
-                return Response<string>.Fail(500, "LLM yanıtı alınırken bir hata oluştu.");
-
-            }
+            // Fallback prompt
+            return @"Sen bir liman yonetim asistanisin. Urun verilerini analiz edersin.
+Statu 1: Limandan Cikti, Statu 2: Limanda demektir.
+Yanitlarini her zaman Turkce ve Markdown formatinda ver.
+Soruya gore uygun veri setini kullan: Products (detayli urun bilgisi) veya PriceSummary (ozet bilgi).";
         }
 
         private string ComputeHash(string input)
@@ -144,7 +140,6 @@ namespace Kantarv2.Handler.QueryHandler
             using var md5 = System.Security.Cryptography.MD5.Create();
             var bytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
             return Convert.ToHexString(bytes);
-
         }
     }
 }

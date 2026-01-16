@@ -2,7 +2,9 @@
 using Kantarv2.DAL;
 using Kantarv2.Dtos;
 using Kantarv2.Entities;
+using Kantarv2.Messages;
 using Kantarv2.Services;
+using MassTransit;
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
@@ -11,11 +13,13 @@ using System.Linq;
 
 namespace Kantarv2.Handler.CommandHandler
 {
-    public class UserCommandHandler : IRequestHandler<LoginCommand, Response<TokenDto>>,
-        IRequestHandler<RegisterCommand, Response<NoContent>>,
-        IRequestHandler<RefreshTokenCommand, Response<TokenDto>>,
-        IRequestHandler<DeleteUser, Response<NoContent>>,
-        IRequestHandler<LogoutCommand, Response<NoContent>>
+    public class UserCommandHandler : IRequestHandler<LoginCommand, Dtos.Response<TokenDto>>,
+        IRequestHandler<RegisterCommand, Dtos.Response<NoContent>>,
+        IRequestHandler<RefreshTokenCommand, Dtos.Response<TokenDto>>,
+        IRequestHandler<DeleteUser, Dtos.Response<NoContent>>,
+        IRequestHandler<LogoutCommand, Dtos.Response<NoContent>>,
+        IRequestHandler<ForgotPasswordCommand, Dtos.Response<NoContent>>,
+        IRequestHandler<ResetPasswordCommand, Dtos.Response<NoContent>>
     {
         private readonly ILogger<UserCommandHandler> _logger;
         private readonly UserManager<User> _userManager;
@@ -23,6 +27,7 @@ namespace Kantarv2.Handler.CommandHandler
         private readonly KantarDbContext _context;
         private readonly ITokenServiceInterface _tokenService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IPublishEndpoint _publishEndpoint;
 
         public UserCommandHandler(
             UserManager<User> userManager,
@@ -30,7 +35,8 @@ namespace Kantarv2.Handler.CommandHandler
             KantarDbContext context,
             ITokenServiceInterface tokenService,
             IHttpContextAccessor httpContextAccessor,
-            ILogger<UserCommandHandler> logger)
+            ILogger<UserCommandHandler> logger,
+            IPublishEndpoint publishEndpoint)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -38,10 +44,11 @@ namespace Kantarv2.Handler.CommandHandler
             _tokenService = tokenService;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
+            _publishEndpoint = publishEndpoint;
         }
 
 
-        public async Task<Response<TokenDto>> Handle(LoginCommand request, CancellationToken cancellationToken)
+        public async Task<Dtos.Response<TokenDto>> Handle(LoginCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -53,7 +60,7 @@ namespace Kantarv2.Handler.CommandHandler
                 if (user == null)
                 {
                     _logger.LogWarning("Kullanıcı bulunamadı:{Username}", request.Username);
-                    return Response<TokenDto>.Fail(500, "kullanıcı bulunamadı veya parola hatalı");
+                    return Dtos.Response<TokenDto>.Fail(500, "kullanıcı bulunamadı veya parola hatalı");
                 }
 
                 // Use SignInManager to check password
@@ -62,21 +69,21 @@ namespace Kantarv2.Handler.CommandHandler
                 if (!result.Succeeded)
                 {
                     _logger.LogWarning("Parola hatalı:{Username}", request.Username);
-                    return Response<TokenDto>.Fail(500, "kullanıcı bulunamadı veya parola hatalı");
+                    return Dtos.Response<TokenDto>.Fail(500, "kullanıcı bulunamadı veya parola hatalı");
                 }
 
                 var token = await _tokenService.CreateTokens(user);
                 _logger.LogInformation("Kullanıcı başarıyla giriş yaptı:{Username}", user.UserName);
-                return Response<TokenDto>.Success(200, token);
+                return Dtos.Response<TokenDto>.Success(200, token);
             }
             catch (Exception ex)
             {
                 _logger.LogError("Kullanıcı giriş yaparken hata oluştu:{Error}", ex.Message);
-                return Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu " + ex);
+                return Dtos.Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
-        public async Task<Response<NoContent>> Handle(RegisterCommand request, CancellationToken cancellationToken)
+        public async Task<Dtos.Response<NoContent>> Handle(RegisterCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -85,7 +92,7 @@ namespace Kantarv2.Handler.CommandHandler
                 if (userExists != null)
                 {
                     _logger.LogWarning("Kullanıcı zaten mevcut:{Username}", request.Username);
-                    return Response<NoContent>.Fail(500, "kullanıcı zaten mevcut");
+                    return Dtos.Response<NoContent>.Fail(500, "kullanıcı zaten mevcut");
                 }
 
                 var user = new User
@@ -102,7 +109,7 @@ namespace Kantarv2.Handler.CommandHandler
                 {
                     var errors = string.Join(", ", result.Errors.Select(e => e.Description));
                     _logger.LogError("Kullanıcı oluşturulurken hata: {Errors}", errors);
-                    return Response<NoContent>.Fail(500, "kullanıcı oluşturulamadı: " + errors);
+                    return Dtos.Response<NoContent>.Fail(500, "kullanıcı oluşturulamadı: " + errors);
                 }
 
                 // Assign role using UserManager
@@ -114,16 +121,16 @@ namespace Kantarv2.Handler.CommandHandler
                 }
 
                 _logger.LogInformation("Kullanıcı başarıyla kaydedildi:{Username}", request.Username);
-                return Response<NoContent>.Success(200);
+                return Dtos.Response<NoContent>.Success(200);
             }
             catch (Exception ex)
             {
                 _logger.LogError("Kullanıcı kaydederken hata oluştu:{Error}", ex.Message);
-                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
+                return Dtos.Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
-        public async Task<Response<TokenDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
+        public async Task<Dtos.Response<TokenDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -135,7 +142,7 @@ namespace Kantarv2.Handler.CommandHandler
                 if (user == null)
                 {
                     _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", request.UserId);
-                    return Response<TokenDto>.Fail(500, "kullanıcı bulunamadı");
+                    return Dtos.Response<TokenDto>.Fail(500, "kullanıcı bulunamadı");
                 }
 
                 var token = await _tokenService.RefreshTokenAsync(user.Id, user.RefreshToken, cancellationToken);
@@ -143,20 +150,20 @@ namespace Kantarv2.Handler.CommandHandler
                 if (token == null)
                 {
                     _logger.LogWarning("Token yenilenemedi:{UserId}", request.UserId);
-                    return Response<TokenDto>.Fail(500, "token geçersiz veya süresi dolmuş");
+                    return Dtos.Response<TokenDto>.Fail(500, "token geçersiz veya süresi dolmuş");
                 }
 
                 _logger.LogInformation("Token başarıyla yenilendi:{UserId}", request.UserId);
-                return Response<TokenDto>.Success(200, token);
+                return Dtos.Response<TokenDto>.Success(200, token);
             }
             catch (Exception ex)
             {
                 _logger.LogError("Token yenilenirken hata oluştu:{Error}", ex.Message);
-                return Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu " + ex);
+                return Dtos.Response<TokenDto>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
-        public async Task<Response<NoContent>> Handle(DeleteUser request, CancellationToken cancellationToken)
+        public async Task<Dtos.Response<NoContent>> Handle(DeleteUser request, CancellationToken cancellationToken)
         {
             try
             {
@@ -168,7 +175,7 @@ namespace Kantarv2.Handler.CommandHandler
                 if (user == null)
                 {
                     _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", request.Id);
-                    return Response<NoContent>.Fail(500, "kullanıcı bulunamadı");
+                    return Dtos.Response<NoContent>.Fail(500, "kullanıcı bulunamadı");
                 }
 
                 // Soft delete by setting IsDeleted flag
@@ -179,20 +186,20 @@ namespace Kantarv2.Handler.CommandHandler
                 {
                     var errors = string.Join(", ", result.Errors.Select(e => e.Description));
                     _logger.LogError("Kullanıcı silinirken hata:{Errors}", errors);
-                    return Response<NoContent>.Fail(500, "kullanıcı silinemedi: " + errors);
+                    return Dtos.Response<NoContent>.Fail(500, "kullanıcı silinemedi: " + errors);
                 }
 
                 _logger.LogInformation("Kullanıcı başarıyla silindi:{UserId}", request.Id);
-                return Response<NoContent>.Success(200);
+                return Dtos.Response<NoContent>.Success(200);
             }
             catch (Exception ex)
             {
                 _logger.LogError("Kullanıcı silinirken hata oluştu:{Error}", ex.Message);
-                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
+                return Dtos.Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
             }
         }
 
-        public async Task<Response<NoContent>> Handle(LogoutCommand request, CancellationToken cancellationToken)
+        public async Task<Dtos.Response<NoContent>> Handle(LogoutCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -204,7 +211,7 @@ namespace Kantarv2.Handler.CommandHandler
                     if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out userId))
                     {
                         _logger.LogWarning("Kullanıcı kimliği JWT token'dan alınamadı");
-                        return Response<NoContent>.Fail(401, "Geçersiz token");
+                        return Dtos.Response<NoContent>.Fail(401, "Geçersiz token");
                     }
                 }
 
@@ -216,14 +223,14 @@ namespace Kantarv2.Handler.CommandHandler
                 if (user == null)
                 {
                     _logger.LogWarning("Kullanıcı bulunamadı:{UserId}", userId);
-                    return Response<NoContent>.Fail(400, "kullanıcı bulunamadı");
+                    return Dtos.Response<NoContent>.Fail(400, "kullanıcı bulunamadı");
                 }
 
                 // Refresh token kontrolü (opsiyonel - güvenlik için)
                 if (!string.IsNullOrEmpty(request.RefreshToken) && user.RefreshToken != request.RefreshToken)
                 {
                     _logger.LogWarning("Geçersiz refresh token:{UserId}", userId);
-                    return Response<NoContent>.Fail(400, "Geçersiz refresh token");
+                    return Dtos.Response<NoContent>.Fail(400, "Geçersiz refresh token");
                 }
 
                 // CRITICAL: SecurityStamp'i güncelle - Tüm mevcut token'lar anında geçersiz olur!
@@ -236,12 +243,85 @@ namespace Kantarv2.Handler.CommandHandler
                 await _userManager.UpdateAsync(user);
 
                 _logger.LogInformation("Kullanıcı başarıyla çıkış yaptı. SecurityStamp güncellendi, tüm token'lar geçersiz:{UserId}", userId);
-                return Response<NoContent>.Success(204);
+                return Dtos.Response<NoContent>.Success(204);
             }
             catch (Exception ex)
             {
                 _logger.LogError("Kullanıcı çıkış yaparken hata oluştu:{Error}", ex.Message);
-                return Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
+                return Dtos.Response<NoContent>.Fail(500, "beklenmedik bir hata oluştu " + ex);
+            }
+        }
+
+        public async Task<Dtos.Response<NoContent>> Handle(ForgotPasswordCommand request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var user = await _userManager.Users
+                    .Where(x => !x.IsDeleted && x.Email.ToLower() == request.Email.Trim().ToLower())
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (user == null)
+                {
+                    // Guvenlik icin kullanici bulunamasa bile basarili donuyoruz
+                    _logger.LogWarning("Sifre sifirlama istegi - kullanici bulunamadi: {Email}", request.Email);
+                    return Dtos.Response<NoContent>.Success(200);
+                }
+
+                // Password reset token olustur
+                var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+                // MassTransit ile email gonder
+                await _publishEndpoint.Publish(new PasswordResetMessage
+                {
+                    Email = user.Email!,
+                    UserName = user.UserName!,
+                    ResetToken = resetToken,
+                    CreatedAt = DateTime.UtcNow
+                }, cancellationToken);
+
+                _logger.LogInformation("Sifre sifirlama emaili kuyruga eklendi: {Email}", user.Email);
+                return Dtos.Response<NoContent>.Success(200);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Sifre sifirlama isteginde hata: {Error}", ex.Message);
+                return Dtos.Response<NoContent>.Fail(500, "beklenmedik bir hata olustu " + ex);
+            }
+        }
+
+        public async Task<Dtos.Response<NoContent>> Handle(ResetPasswordCommand request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var user = await _userManager.Users
+                    .Where(x => !x.IsDeleted && x.Email.ToLower() == request.Email.Trim().ToLower())
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (user == null)
+                {
+                    _logger.LogWarning("Sifre sifirlama - kullanici bulunamadi: {Email}", request.Email);
+                    return Dtos.Response<NoContent>.Fail(400, "Gecersiz istek");
+                }
+
+                var result = await _userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    _logger.LogWarning("Sifre sifirlanamadi: {Email}, Hatalar: {Errors}", request.Email, errors);
+                    return Dtos.Response<NoContent>.Fail(400, "Sifre sifirlanamadi: " + errors);
+                }
+
+                // SecurityStamp guncelle - eski token'lari gecersiz kil
+                await _userManager.UpdateSecurityStampAsync(user);
+
+                _logger.LogInformation("Sifre basariyla sifirlandi: {Email}", user.Email);
+                return Dtos.Response<NoContent>.Success(200);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Sifre sifirlama hatasi: {Error}", ex.Message);
+                return Dtos.Response<NoContent>.Fail(500, "beklenmedik bir hata olustu " + ex);
             }
         }
     }

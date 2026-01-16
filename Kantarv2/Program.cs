@@ -70,11 +70,16 @@ builder.Services.AddScoped<IExcelServiceInterface, ExcelService>();
 builder.Services.AddScoped<RoleSeeder>();
 builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
 
+// Email Service
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 // MassTransit with RabbitMQ
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<UserCreatedConsumer>();
     x.AddConsumer<ExcelExportConsumer>();
+    x.AddConsumer<PasswordResetEmailConsumer>();
 
     x.UsingRabbitMq((context, cfg) =>
     {

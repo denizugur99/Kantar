@@ -72,5 +72,19 @@ namespace Kantarv2.Controllers
             var result = await _mediator.Send(command);
             return CreateActionResultInstance(result);
         }
+
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordCommand command)
+        {
+            var result = await _mediator.Send(command);
+            return CreateActionResultInstance(result);
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordCommand command)
+        {
+            var result = await _mediator.Send(command);
+            return CreateActionResultInstance(result);
+        }
     }
 }

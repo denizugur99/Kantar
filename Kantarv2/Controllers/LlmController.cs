@@ -1,7 +1,6 @@
-﻿using Kantarv2.Queries.Llm;
+using Kantarv2.Queries.Llm;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kantarv2.Controllers
@@ -17,24 +16,14 @@ namespace Kantarv2.Controllers
         }
 
         [Authorize(Roles = "SuperAdmin,Admin,User")]
-        [HttpGet("analyze")]
-        public async Task<IActionResult> AnalyzeProduct([FromQuery] string prompt)
+        [HttpGet("ask")]
+        public async Task<IActionResult> Ask([FromQuery] string prompt)
         {
-            var result = await _mediator.Send(new Productaskllmquery
+            var result = await _mediator.Send(new AskLlmQuery
             {
                 Prompt = prompt
             });
 
-            return CreateActionResultInstance(result);
-        }
-        [Authorize(Roles = "SuperAdmin,Admin,User")]
-        [HttpGet("overallprice")]
-        public async Task<IActionResult> GetOverallPrice([FromQuery] string prompt)
-        {
-            var result = await _mediator.Send(new OverallPriceQuery
-            {
-                Prompt = prompt
-            });
             return CreateActionResultInstance(result);
         }
     }
