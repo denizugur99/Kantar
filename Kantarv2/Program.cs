@@ -1,7 +1,10 @@
+using Kantarv2.Consumers;
 using Kantarv2.DAL;
 using Kantarv2.Entities;
+using Kantarv2.Hubs;
 using Kantarv2.Middleware;
 using Kantarv2.Services;
+using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -65,6 +68,25 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
 builder.Services.AddScoped<ITokenServiceInterface, TokenService>();
 builder.Services.AddScoped<IExcelServiceInterface, ExcelService>();
 builder.Services.AddScoped<RoleSeeder>();
+builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
+
+// MassTransit with RabbitMQ
+builder.Services.AddMassTransit(x =>
+{
+    x.AddConsumer<UserCreatedConsumer>();
+    x.AddConsumer<ExcelExportConsumer>();
+
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        var rabbitMqUri = builder.Configuration["RabbitMQ:Uri"]
+            ?? throw new ArgumentNullException("RabbitMQ:Uri configuration is missing");
+
+        cfg.Host(new Uri(rabbitMqUri));
+
+        cfg.ConfigureEndpoints(context);
+    });
+});
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -90,6 +112,19 @@ builder.Services.AddAuthentication(options =>
     // SecurityStamp validation - Token'ın hala geçerli olup olmadığını kontrol et
     options.Events = new JwtBearerEvents
     {
+        // SignalR için query string'den token al
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        },
         OnTokenValidated = async context =>
         {
             var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<Kantarv2.Entities.User>>();
@@ -124,6 +159,9 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddHttpContextAccessor();
 
+// SignalR
+builder.Services.AddSignalR();
+
 var app = builder.Build();
 
 // Seed roles on startup
@@ -150,5 +188,8 @@ app.UseMiddleware<UserContextMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// SignalR Hub
+app.MapHub<ExcelExportHub>("/hubs/excel-export");
 
 app.Run();

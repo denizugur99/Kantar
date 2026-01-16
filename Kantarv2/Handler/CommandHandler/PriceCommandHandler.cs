@@ -16,6 +16,7 @@ namespace Kantarv2.Handler.CommandHandler
         IRequestHandler<DeleteUnitPrice, Response<NoContent>>
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
+        
         private readonly KantarDbContext _context;
         private readonly ILogger<PriceCommandHandler> _logger;
         private readonly IConnectionMultiplexer _redis;
