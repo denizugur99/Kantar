@@ -104,39 +104,6 @@ namespace Kantarv2.Services
             }
         }
 
-        public async Task<(byte[]? Content, string? FileName)> DownloadFileByPrefixAsync(string prefix)
-        {
-            try
-            {
-                // S3'te prefix ile dosya ara
-                var listRequest = new ListObjectsV2Request
-                {
-                    BucketName = _settings.BucketName,
-                    Prefix = prefix,
-                    MaxKeys = 1
-                };
-
-                var listResponse = await _s3Client.ListObjectsV2Async(listRequest);
-
-                if (listResponse.S3Objects.Count == 0)
-                {
-                    _logger.LogWarning("No file found with prefix {Prefix} in S3 bucket {BucketName}", prefix, _settings.BucketName);
-                    return (null, null);
-                }
-
-                var s3Key = listResponse.S3Objects[0].Key;
-                var content = await DownloadFileAsync(s3Key);
-                var fileName = Path.GetFileName(s3Key);
-
-                return (content, fileName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error searching file with prefix {Prefix} in S3", prefix);
-                throw;
-            }
-        }
-
         public async Task<bool> DeleteFileAsync(string fileName)
         {
             try
