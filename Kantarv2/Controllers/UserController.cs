@@ -43,6 +43,7 @@ namespace Kantarv2.Controllers
         /// <returns>Kayıt sonucu</returns>
         /// <response code="201">Kullanıcı başarıyla oluşturuldu</response>
         /// <response code="400">Geçersiz veri veya kullanıcı zaten mevcut</response>
+        [Authorize(Roles = "SuperAdmin")]
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterCommand command)
         {

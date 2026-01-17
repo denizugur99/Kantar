@@ -373,3 +373,6 @@ nul
 .env
 .env.*
 !.env.example
+
+# Docker data volumes (persistent storage)
+docker-data/

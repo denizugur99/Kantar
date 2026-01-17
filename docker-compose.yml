@@ -7,9 +7,9 @@ services:
     container_name: kantar-api
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=kantar;Username=postgres;Password=postgres123"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=kantar;Username=postgres;Password=migansus_31"
       ConnectionStrings__Redis: "redis:6379"
-      RabbitMQ__Uri: "amqp://guest:guest@rabbitmq:5672"
+      RabbitMQ__Uri: "amqp://guest:migansus_31@rabbitmq:5672"
       Serilog__WriteTo__0__Name: "GrafanaLoki"
       Serilog__WriteTo__0__Args__uri: "https://logs-prod-012.grafana.net"
       Serilog__WriteTo__0__Args__credentials__login: "1455573"
@@ -56,12 +56,12 @@ services:
     container_name: kantar-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_PASSWORD: migansus_31
       POSTGRES_DB: kantar
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./docker-data/postgres:/var/lib/postgresql/data
     networks:
       - kantar-network
     healthcheck:
@@ -77,7 +77,7 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - redis_data:/data
+      - ./docker-data/redis:/data
     networks:
       - kantar-network
     healthcheck:
@@ -92,12 +92,12 @@ services:
     container_name: kantar-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_PASS: migansus_31
     ports:
       - "5672:5672" # AMQP
       - "15672:15672" # Management UI
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - ./docker-data/rabbitmq:/var/lib/rabbitmq
     networks:
       - kantar-network
     healthcheck:
@@ -113,7 +113,7 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - loki_data:/loki
+      - ./docker-data/loki:/loki
     networks:
       - kantar-network
     healthcheck:
@@ -122,12 +122,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-volumes:
-  postgres_data:
-  redis_data:
-  rabbitmq_data:
-  loki_data:
 
 networks:
   kantar-network:
