@@ -1,6 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJodHRwOi8vd3d3LnczLm9yZy8yMDAxLzA0L3htbGRzaWctbW9yZSNobWFjLXNoYTUxMiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjAxOWJjYmRjLTViZDgtN2NhNC05NWQ2LTEzNzdlMjBkZDZlMSIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJ0ZXN0dXNlciIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL2VtYWlsYWRkcmVzcyI6InRlc3RAdGVzdC5jb20iLCJzZWN1cml0eV9zdGFtcCI6IlA1MlpaRzNZWlhMTkozTDVEWElVREo2S0RNTlk0VDROIiwicmVmcmVzaF90b2tlbl92ZXJzaW9uIjoiMCIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFkbWluIiwiZXhwIjoxNzY4NjUyNjgwLCJpc3MiOiJrYW50YXJ2MiIsImF1ZCI6ImthbnRhclVzZXJzIn0.k8brYJ3QXE7-6Ec0MtfaV5zE3aKmk3AEYMAzgsiwpP4BSmIu0OXYASWuXNLmHNOtrNFTo9PoKuD0KSGry_QTDg\")"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "context7"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

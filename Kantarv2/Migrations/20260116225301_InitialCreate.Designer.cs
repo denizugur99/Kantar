@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Kantarv2.Migrations
 {
     [DbContext(typeof(KantarDbContext))]
-    [Migration("20260113081531_Initial")]
-    partial class Initial
+    [Migration("20260116225301_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

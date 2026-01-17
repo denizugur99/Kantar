@@ -1,0 +1,105 @@
+services:
+  # Kantar API
+  api:
+    build:
+      context: ./Kantarv2
+      dockerfile: Dockerfile
+    container_name: kantar-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=kantar;Username=postgres;Password=postgres123"
+      ConnectionStrings__Redis: "redis:6379"
+      RabbitMQ__Uri: "amqp://guest:guest@rabbitmq:5672"
+      Serilog__WriteTo__0__Name: "GrafanaLoki"
+      Serilog__WriteTo__0__Args__uri: "https://logs-prod-012.grafana.net"
+      Serilog__WriteTo__0__Args__credentials__login: "1455573"
+      Serilog__WriteTo__0__Args__credentials__password: "glc_eyJvIjoiMTY0MzQxNCIsIm4iOiJsb2tpbG9neWF6LWMtLWxva2lsb2d5YXotYy0iLCJrIjoiMmI1dk5rYjQ3bHU4YmxSOFM2VHY3OWQ2IiwibSI6eyJyIjoicHJvZC1ldS13ZXN0LTIifX0="
+      Appsettings__Token: "supersecretkey12345supersecretkey123supersecretkey12345supersecretkey123"
+      Appsettings__Issuer: "kantarv2"
+      Appsettings__Audience: "kantarUsers"
+      AWS__S3__AccessKey: ${AWS_S3_ACCESS_KEY}
+      AWS__S3__SecretKey: ${AWS_S3_SECRET_KEY}
+      AWS__S3__BucketName: "kantar-v2-excel"
+      AWS__S3__Region: "eu-central-1"
+    ports:
+      - "5000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: kantar-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: kantar
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: kantar-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: kantar-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  kantar-network:
+    driver: bridge

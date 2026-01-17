@@ -365,3 +365,11 @@ FodyWeavers.xsd
 # Production appsettings (contains sensitive data - passwords, API keys, connection strings)
 appsettings.Production.json
 **/appsettings.Production.json
+# Claude Code temp files
+tmpclaude-*
+nul
+
+# Environment variables (contains secrets)
+.env
+.env.*
+!.env.example

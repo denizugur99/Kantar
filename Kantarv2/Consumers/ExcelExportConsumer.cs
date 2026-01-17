@@ -15,15 +15,18 @@ namespace Kantarv2.Consumers
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IHubContext<ExcelExportHub> _hubContext;
         private readonly ILogger<ExcelExportConsumer> _logger;
+        private readonly IS3Service _s3Service;
 
         public ExcelExportConsumer(
             IServiceScopeFactory scopeFactory,
             IHubContext<ExcelExportHub> hubContext,
-            ILogger<ExcelExportConsumer> logger)
+            ILogger<ExcelExportConsumer> logger,
+            IS3Service s3Service)
         {
             _scopeFactory = scopeFactory;
             _hubContext = hubContext;
             _logger = logger;
+            _s3Service = s3Service;
         }
 
         public async Task Consume(ConsumeContext<ExcelExportMessage> context)
@@ -49,16 +52,17 @@ namespace Kantarv2.Consumers
                     _ => throw new ArgumentException($"Unknown export type: {message.ExportType}")
                 };
 
-                // Excel dosyasını kaydet
-                var filePath = await SaveExcelFile(exportResult, message);
+                // Excel dosyasını S3'e yükle ve pre-signed URL al (30 dakika geçerli)
+                var (s3Key, downloadUrl) = await UploadToS3Async(exportResult, message);
 
                 _logger.LogInformation(
-                    "Excel export completed. CorrelationId={CorrelationId}, FileName={FileName}",
+                    "Excel export completed and uploaded to S3. CorrelationId={CorrelationId}, FileName={FileName}, S3Key={S3Key}",
                     message.CorrelationId,
-                    exportResult.FileName);
+                    exportResult.FileName,
+                    s3Key);
 
                 // SignalR ile kullanıcıya bildirim gönder
-                await NotifyUserAsync(message, exportResult, filePath, isSuccess: true);
+                await NotifyUserAsync(message, exportResult, s3Key, downloadUrl, isSuccess: true);
             }
             catch (Exception ex)
             {
@@ -68,7 +72,7 @@ namespace Kantarv2.Consumers
                     ex.Message);
 
                 // Hata durumunda da kullanıcıya bildirim gönder
-                await NotifyUserAsync(message, null, null, isSuccess: false, errorMessage: ex.Message);
+                await NotifyUserAsync(message, null, null, null, isSuccess: false, errorMessage: ex.Message);
 
                 throw;
             }
@@ -77,7 +81,8 @@ namespace Kantarv2.Consumers
         private async Task NotifyUserAsync(
             ExcelExportMessage message,
             ExportExcelDto? exportResult,
-            string? filePath,
+            string? s3Key,
+            string? downloadUrl,
             bool isSuccess,
             string? errorMessage = null)
         {
@@ -85,10 +90,12 @@ namespace Kantarv2.Consumers
             {
                 CorrelationId = message.CorrelationId,
                 FileName = exportResult?.FileName ?? string.Empty,
-                DownloadUrl = isSuccess ? $"/api/products/download/{message.CorrelationId}" : string.Empty,
+                DownloadUrl = downloadUrl ?? string.Empty,
+                S3Key = s3Key ?? string.Empty,
                 IsSuccess = isSuccess,
                 ErrorMessage = errorMessage,
-                CompletedAt = DateTime.UtcNow
+                CompletedAt = DateTime.UtcNow,
+                ExpiresAt = isSuccess ? DateTime.UtcNow.AddMinutes(30) : null
             };
 
             // Kullanıcının group'una bildirim gönder (UserId bazlı group)
@@ -225,19 +232,20 @@ namespace Kantarv2.Consumers
             return $"{prefix}_{dateRange}.xlsx";
         }
 
-        private async Task<string> SaveExcelFile(ExportExcelDto exportResult, ExcelExportMessage message)
+        private async Task<(string S3Key, string DownloadUrl)> UploadToS3Async(ExportExcelDto exportResult, ExcelExportMessage message)
         {
-            // Export klasörünü oluştur
-            var exportPath = Path.Combine(Directory.GetCurrentDirectory(), "Exports", message.UserId.ToString());
-            Directory.CreateDirectory(exportPath);
+            // S3 key: excel/userId/correlationId_filename.xlsx
+            var s3Key = $"excel/{message.UserId}/{message.CorrelationId}_{exportResult.FileName}";
 
-            var filePath = Path.Combine(exportPath, $"{message.CorrelationId}_{exportResult.FileName}");
+            // S3'e yükle
+            await _s3Service.UploadFileAsync(exportResult.Content, s3Key);
 
-            await File.WriteAllBytesAsync(filePath, exportResult.Content);
+            // 30 dakikalık pre-signed URL oluştur
+            var downloadUrl = await _s3Service.GetPreSignedUrlAsync(s3Key, expirationMinutes: 30);
 
-            _logger.LogInformation("Excel file saved to {FilePath}", filePath);
+            _logger.LogInformation("Excel file uploaded to S3. Key={S3Key}, ExpiresIn=30min", s3Key);
 
-            return filePath;
+            return (s3Key, downloadUrl);
         }
     }
 }

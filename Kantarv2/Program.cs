@@ -74,6 +74,10 @@ builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// S3 Service
+builder.Services.Configure<S3Settings>(builder.Configuration.GetSection("AWS:S3"));
+builder.Services.AddSingleton<IS3Service, S3Service>();
+
 // MassTransit with RabbitMQ
 builder.Services.AddMassTransit(x =>
 {
@@ -169,9 +173,12 @@ builder.Services.AddSignalR();
 
 var app = builder.Build();
 
-// Seed roles on startup
+// Apply migrations and seed roles on startup
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<KantarDbContext>();
+    await db.Database.MigrateAsync();
+
     var roleSeeder = scope.ServiceProvider.GetRequiredService<RoleSeeder>();
     await roleSeeder.SeedRolesAsync();
 }
@@ -196,5 +203,8 @@ app.MapControllers();
 
 // SignalR Hub
 app.MapHub<ExcelExportHub>("/hubs/excel-export");
+
+// Health check endpoint
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
 app.Run();

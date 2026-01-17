@@ -45,8 +45,10 @@ namespace Kantarv2.Hubs
         public Guid CorrelationId { get; init; }
         public string FileName { get; init; } = string.Empty;
         public string DownloadUrl { get; init; } = string.Empty;
+        public string S3Key { get; init; } = string.Empty;
         public bool IsSuccess { get; init; }
         public string? ErrorMessage { get; init; }
         public DateTime CompletedAt { get; init; } = DateTime.UtcNow;
+        public DateTime? ExpiresAt { get; init; }
     }
 }

@@ -94,11 +94,11 @@ namespace Kantarv2.Handler.QueryHandler
                         role = "user",
                         content = $@"Soru: {request.Prompt}
 
-## Products (Urun Detaylari)
-{productsJson}
+                        ## Products (Urun Detaylari)
+                        {productsJson}
 
-## PriceSummary (Fiyat Ozeti)
-{priceSummaryJson}"
+                        ## PriceSummary (Fiyat Ozeti)
+                        {priceSummaryJson}"
                     }
                 };
 

@@ -4,6 +4,7 @@ using Kantarv2.Enums;
 using Kantarv2.Messages;
 using Kantarv2.Pagination;
 using Kantarv2.Queries.Products;
+using Kantarv2.Services;
 using MassTransit;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -20,17 +21,20 @@ namespace Kantarv2.Handler.QueryHandler
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IPublishEndpoint _publishEndpoint;
         private readonly ILogger<ProductQueryHandler> _logger;
+        private readonly IS3Service _s3Service;
 
         public ProductQueryHandler(
             KantarDbContext context,
             IHttpContextAccessor httpContextAccessor,
             IPublishEndpoint publishEndpoint,
-            ILogger<ProductQueryHandler> logger)
+            ILogger<ProductQueryHandler> logger,
+            IS3Service s3Service)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
             _publishEndpoint = publishEndpoint;
             _logger = logger;
+            _s3Service = s3Service;
         }
 
         public async Task<Dtos.Response<List<ListProductDto>>> Handle(ListProduct request, CancellationToken cancellationToken)
@@ -178,43 +182,39 @@ namespace Kantarv2.Handler.QueryHandler
             }
         }
 
-        public Task<Dtos.Response<ExportExcelDto>> Handle(DownloadExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Dtos.Response<ExportExcelDto>> Handle(DownloadExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
-                var exportPath = Path.Combine(Directory.GetCurrentDirectory(), "Exports", request.UserId.ToString());
+                // S3 key pattern: excel/userId/correlationId_*.xlsx
+                var s3KeyPrefix = $"excel/{request.UserId}/{request.CorrelationId}_";
 
-                if (!Directory.Exists(exportPath))
+                // S3'ten prefix ile dosya ara ve indir
+                var (fileBytes, fileName) = await _s3Service.DownloadFileByPrefixAsync(s3KeyPrefix);
+
+                if (fileBytes == null || fileName == null)
                 {
-                    _logger.LogWarning("Export folder not found for user {UserId}", request.UserId);
-                    return Task.FromResult(Dtos.Response<ExportExcelDto>.Fail(404, "Export folder not found"));
+                    _logger.LogWarning("File not found in S3. Prefix={Prefix}, CorrelationId={CorrelationId}",
+                        s3KeyPrefix, request.CorrelationId);
+                    return Dtos.Response<ExportExcelDto>.Fail(404, "File not found or expired");
                 }
 
-                var files = Directory.GetFiles(exportPath, $"{request.CorrelationId}_*.xlsx");
+                // CorrelationId prefix'ini dosya adından çıkar
+                var cleanFileName = fileName.Replace($"{request.CorrelationId}_", "");
 
-                if (files.Length == 0)
-                {
-                    _logger.LogWarning("File not found. CorrelationId={CorrelationId}", request.CorrelationId);
-                    return Task.FromResult(Dtos.Response<ExportExcelDto>.Fail(404, "File not found"));
-                }
-
-                var filePath = files[0];
-                var fileName = Path.GetFileName(filePath).Replace($"{request.CorrelationId}_", "");
-                var fileBytes = File.ReadAllBytes(filePath);
-
-                _logger.LogInformation("Excel file downloaded. CorrelationId={CorrelationId}, UserId={UserId}",
+                _logger.LogInformation("Excel file downloaded from S3. CorrelationId={CorrelationId}, UserId={UserId}",
                     request.CorrelationId, request.UserId);
 
-                return Task.FromResult(Dtos.Response<ExportExcelDto>.Success(200, new ExportExcelDto
+                return Dtos.Response<ExportExcelDto>.Success(200, new ExportExcelDto
                 {
-                    FileName = fileName,
+                    FileName = cleanFileName,
                     Content = fileBytes
-                }));
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to download excel file. CorrelationId={CorrelationId}", request.CorrelationId);
-                return Task.FromResult(Dtos.Response<ExportExcelDto>.Fail(500, "Failed to download file"));
+                _logger.LogError(ex, "Failed to download excel file from S3. CorrelationId={CorrelationId}", request.CorrelationId);
+                return Dtos.Response<ExportExcelDto>.Fail(500, "Failed to download file");
             }
         }
     }
