@@ -10,6 +10,9 @@ RUN dotnet restore
 COPY . .
 RUN dotnet publish -c Release -o /app/publish
 
+# Copy Prompts to publish folder
+RUN cp -r Prompts /app/publish/Prompts || true
+
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/nightly/aspnet:10.0 AS runtime
 WORKDIR /app
@@ -19,13 +22,9 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 
-# Create Prompts directory and copy if exists
-COPY Prompts/ ./Prompts/
-
 EXPOSE 8080
 
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 
 ENTRYPOINT ["dotnet", "Kantarv2.dll"]
-1
