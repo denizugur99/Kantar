@@ -234,8 +234,8 @@ namespace Kantarv2.Consumers
 
         private async Task<(string S3Key, string DownloadUrl)> UploadToS3Async(ExportExcelDto exportResult, ExcelExportMessage message)
         {
-            // S3 key: excel/userId/correlationId_filename.xlsx
-            var s3Key = $"excel/{message.UserId}/{message.CorrelationId}_{exportResult.FileName}";
+            // S3 key: excel/userId/correlationId.xlsx (sabit format)
+            var s3Key = $"excel/{message.UserId}/{message.CorrelationId}.xlsx";
 
             // S3'e yükle
             await _s3Service.UploadFileAsync(exportResult.Content, s3Key);

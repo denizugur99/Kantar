@@ -186,28 +186,24 @@ namespace Kantarv2.Handler.QueryHandler
         {
             try
             {
-                // S3 key pattern: excel/userId/correlationId_*.xlsx
-                var s3KeyPrefix = $"excel/{request.UserId}/{request.CorrelationId}_";
+                // S3 key: excel/userId/correlationId.xlsx
+                var s3Key = $"excel/{request.UserId}/{request.CorrelationId}.xlsx";
 
-                // S3'ten prefix ile dosya ara ve indir
-                var (fileBytes, fileName) = await _s3Service.DownloadFileByPrefixAsync(s3KeyPrefix);
+                var fileBytes = await _s3Service.DownloadFileAsync(s3Key);
 
-                if (fileBytes == null || fileName == null)
+                if (fileBytes == null)
                 {
-                    _logger.LogWarning("File not found in S3. Prefix={Prefix}, CorrelationId={CorrelationId}",
-                        s3KeyPrefix, request.CorrelationId);
+                    _logger.LogWarning("File not found in S3. Key={Key}, CorrelationId={CorrelationId}",
+                        s3Key, request.CorrelationId);
                     return Dtos.Response<ExportExcelDto>.Fail(404, "File not found or expired");
                 }
-
-                // CorrelationId prefix'ini dosya adından çıkar
-                var cleanFileName = fileName.Replace($"{request.CorrelationId}_", "");
 
                 _logger.LogInformation("Excel file downloaded from S3. CorrelationId={CorrelationId}, UserId={UserId}",
                     request.CorrelationId, request.UserId);
 
                 return Dtos.Response<ExportExcelDto>.Success(200, new ExportExcelDto
                 {
-                    FileName = cleanFileName,
+                    FileName = $"{request.CorrelationId}.xlsx",
                     Content = fileBytes
                 });
             }
