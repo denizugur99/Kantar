@@ -21,6 +21,17 @@ services:
       AWS__S3__SecretKey: ${AWS_S3_SECRET_KEY}
       AWS__S3__BucketName: "kantar-v2-excel"
       AWS__S3__Region: "eu-central-1"
+      # Email Settings
+      EmailSettings__SmtpServer: "smtp.gmail.com"
+      EmailSettings__SmtpPort: "587"
+      EmailSettings__SenderEmail: ${EMAIL_SENDER}
+      EmailSettings__SenderName: "Kantar"
+      EmailSettings__Password: ${EMAIL_PASSWORD}
+      EmailSettings__EnableSsl: "true"
+      # Groq LLM
+      Groq__ApiKey: ${GROQ_API_KEY}
+      Groq__Endpoint: "https://api.groq.com/openai/v1/chat/completions"
+      Groq__Model: "llama-3.1-8b-instant"
     ports:
       - "5000:8080"
     depends_on:
