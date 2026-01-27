@@ -426,7 +426,7 @@ Kantarv2, CQRS pattern ve asenkron mesaj işleme ile geliştirilmiş modern kuru
 - **API Dokümantasyonu** - `/scalar/v1` adresinde interaktif Scalar UI
 - **Sağlık Kontrolleri** - Yerleşik sağlık kontrolü endpoint'leri
 
-## Teknoloji Yığını
+## Kullanılan Teknolojiler
 
 ### Backend Framework
 - **ASP.NET Core 10.0** - Modern web API framework'ü
