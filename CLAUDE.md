@@ -2,188 +2,129 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-Kantarv2 is an ASP.NET Core Web API (.NET 10.0) implementing a product price management system with JWT authentication, user management, and LLM integration. The application follows CQRS pattern using MediatR and integrates with PostgreSQL, Redis, Elasticsearch, and external LLM services.
-
 ## Build and Run Commands
 
 ```bash
-# Build the project
+# Build
 dotnet build
 
-# Run the application
+# Run the API
 dotnet run --project Kantarv2/Kantarv2.csproj
 
-# Restore dependencies
-dotnet restore
+# Start infrastructure (PostgreSQL, Redis, RabbitMQ, Loki)
+docker compose up -d
 
-# Create a new migration
+# Run everything including the API in containers
+docker compose up --build
+
+# EF Core migrations
 dotnet ef migrations add MigrationName --project Kantarv2
-
-# Apply migrations to database
 dotnet ef database update --project Kantarv2
-
-# Clean build artifacts
-dotnet clean
 ```
+
+Note: Migrations are auto-applied on startup (`Program.cs` calls `MigrateAsync`). Docker Compose maps PostgreSQL to port 5433, Redis to 6380, and RabbitMQ to 5672/15672 on the host.
 
 ## Architecture
 
-### CQRS Pattern with MediatR
+ASP.NET Core 10.0 Web API using CQRS with MediatR. All operations are split into Commands (writes) and Queries (reads), each with a dedicated handler.
 
-The application strictly separates read (Query) and write (Command) operations:
+### Request Flow
 
-- **Commands**: Located in `Command/` folders (User, Product, UnitPrice), handled by `Handler/CommandHandler/`
-- **Queries**: Located in `Queries/` folders (User, Products, UnitPrice, Llm), handled by `Handler/QueryHandler/`
-- Each command/query implements `IRequest<Response<T>>` from MediatR
-- Handlers implement `IRequestHandler<TRequest, TResponse>`
+```
+Controller → _mediator.Send(Command/Query) → Handler → Response<T> → BaseController.CreateActionResultInstance()
+```
 
-Example command: [LoginCommand.cs](Kantarv2/Command/User/LoginCommand.cs) handled by [UserCommandHandler.cs](Kantarv2/Handler/CommandHandler/UserCommandHandler.cs)
+Controllers inherit `BaseController` which provides `CreateActionResultInstance<T>()` to convert `Response<T>` into HTTP responses. Controllers inject `IMediator` directly (BaseController does not provide it).
+
+### Adding a New Feature
+
+1. Create a Command or Query class in `Command/` or `Queries/` implementing `IRequest<Response<T>>`
+2. Create a handler in `Handler/CommandHandler/` or `Handler/QueryHandler/` implementing `IRequestHandler<TRequest, Response<T>>`
+3. Add a controller endpoint that sends the command/query via `_mediator.Send()`
 
 ### Response Pattern
 
-All handlers return `Response<T>` from [Dtos/Response.cs](Kantarv2/Dtos/Response.cs) which includes:
-- `Data`: Generic payload
-- `StatusCode`: HTTP status code
-- `IsSuccess`: Success indicator
-- `Errors`: Error messages
-- `Pagination`: Optional pagination metadata
+All handlers return `Response<T>` (`Dtos/Response.cs`). Use the static factory methods:
+- `Response<T>.Success(statusCode, data, pagination?)` or `Response<T>.Success(statusCode)`
+- `Response<T>.Fail(statusCode, errorMessage)` or `Response<T>.Fail(statusCode, errorList)`
 
-Use static factory methods: `Response<T>.Success()`, `Response<T>.Fail()`
+`StatusCode` and `IsSuccess` are `[JsonIgnore]`; `Data`, `Errors`, and `Pagination` are conditionally serialized.
 
-### Database Context
+### Async Messaging with MassTransit/RabbitMQ
 
-[DAL/KantarDbContext.cs](Kantarv2/DAL/KantarDbContext.cs) inherits from `IdentityDbContext<User, IdentityRole<int>, int>`:
-- Primary entities: User (Identity), Product, UnitPrice
-- Uses PostgreSQL with Entity Framework Core
-- Custom DateTime converter for UTC handling on RefreshTokenExpireDate
-- Connection string: `DefaultConnection` in appsettings.json
+Background processing uses MassTransit consumers (`Consumers/`):
+- `ExcelExportConsumer` - Generates Excel via ClosedXML, uploads to S3, notifies via SignalR
+- `UserCreatedConsumer` - Handles post-registration logic
+- `PasswordResetEmailConsumer` - Sends password reset emails
 
-### Authentication & Authorization
+Message contracts are in `Messages/`. Publish messages via `IPublishEndpoint` or `IBus`.
 
-**JWT-based authentication with custom SecurityStamp validation:**
-- Token service: [Services/TokenService.cs](Kantarv2/Services/TokenService.cs)
-- Tokens configured in appsettings.json under `Appsettings:Token`, `Issuer`, `Audience`
-- SecurityStamp validation occurs on every request via JWT bearer events in [Program.cs](Kantarv2/Program.cs:90-121)
-- Validates user exists, is not deleted, and SecurityStamp matches
-- Role-based authorization with auto-seeding via [RoleSeeder.cs](Kantarv2/Services/RoleSeeder.cs)
+### Excel Export Workflow
 
-**Authentication flow:**
-1. User logs in → receives AccessToken + RefreshToken
-2. AccessToken includes SecurityStamp claim
-3. On each request, JWT middleware validates SecurityStamp against database
-4. Logout invalidates tokens by updating user's SecurityStamp
+This is a core async feature:
+1. Client calls export endpoint → Handler publishes `ExcelExportMessage` to RabbitMQ → returns 202
+2. `ExcelExportConsumer` generates Excel, uploads to S3 (`excel/{userId}/{correlationId}.xlsx`)
+3. SignalR hub (`/hubs/excel-export`) sends `ExcelExportCompleted` event to user's group with pre-signed S3 URL (30-min expiry)
+4. Client downloads via the S3 URL or the download endpoint with correlationId
+
+### Authentication
+
+JWT Bearer with SecurityStamp validation on every request (`Program.cs` OnTokenValidated event). The middleware validates the user exists, is not soft-deleted, and the `security_stamp` claim matches the database value. Logout/password change invalidates all existing tokens by updating SecurityStamp.
+
+SignalR tokens are extracted from `?access_token=` query string for WebSocket connections.
+
+Three seeded roles: `SuperAdmin`, `Admin`, `User`. Identity uses `Guid` IDs (`User` extends `IdentityUser<Guid>`, roles use `IdentityRole<Guid>`).
 
 ### Middleware Pipeline Order
 
-From [Program.cs](Kantarv2/Program.cs:142-149):
-1. `UseHttpsRedirection()`
-2. `UseAuthentication()` - JWT validation
-3. `UserContextMiddleware` - Enriches Serilog context with user claims (UserId, UserName, Email, Roles)
-4. `UseAuthorization()`
-
-**Important**: UserContextMiddleware must come after UseAuthentication() to access authenticated user claims.
-
-### Logging with Serilog & Elasticsearch
-
-- Configured in appsettings.json under `Serilog` section
-- Logs sent to Elasticsearch at `http://localhost:9200`
-- Index format: `kantar-api-logs-{yyyy.MM.dd}`
-- User context automatically added to logs via [UserContextMiddleware.cs](Kantarv2/Middleware/UserContextMiddleware.cs)
-- Enrichers: Environment, Thread
-- Console and Elasticsearch sinks enabled
-
-### Caching with Redis
-
-- Redis connection: `localhost:6379`
-- Instance name prefix: `Kantarv2_`
-- Configured in [Program.cs](Kantarv2/Program.cs:57-63)
-- Both `IDistributedCache` (StackExchange) and `IConnectionMultiplexer` available for injection
-
-### LLM Integration
-
-[Services/LlmService.cs](Kantarv2/Services/LlmService.cs) provides LLM capabilities:
-- Uses Groq API with `llama-3.1-8b-instant` model
-- Endpoint: `https://api.groq.com/openai/v1/chat/completions`
-- Handles chat message history (List<object>)
-- API key currently hardcoded (should be moved to configuration)
-
-Used by [LlmController.cs](Kantarv2/Controllers/LlmController.cs) via [Llmqueryhandler.cs](Kantarv2/Handler/QueryHandler/Llmqueryhandler.cs)
-
-### Excel Export Service
-
-[Services/ExcelService.cs](Kantarv2/Services/ExcelService.cs) uses ClosedXML:
-- Implements `IExcelServiceInterface`
-- Generates Excel files from `ExportExcelDto`
-- Returns byte arrays for download
-
-## Project Structure
-
 ```
-Kantarv2/
-├── Command/              # Write operations (CQRS commands)
-│   ├── Product/
-│   ├── UnitPrice/
-│   └── User/
-├── Queries/              # Read operations (CQRS queries)
-│   ├── Llm/
-│   ├── Products/
-│   ├── UnitPrice/
-│   └── User/
-├── Handler/              # MediatR handlers
-│   ├── CommandHandler/   # Command handlers
-│   └── QueryHandler/     # Query handlers
-├── Controllers/          # API endpoints
-├── DAL/                  # Database context
-├── Entities/             # Domain models
-├── Dtos/                 # Data transfer objects
-├── Services/             # Business services
-├── Middleware/           # Custom middleware
-├── Migrations/           # EF migrations
-├── Enums/                # Enumerations
-└── Pagination/           # Pagination helpers
+UseHttpsRedirection → UseAuthentication → UserContextMiddleware → UseAuthorization → MapControllers → MapHub
 ```
 
-## Configuration Requirements
+`UserContextMiddleware` enriches Serilog log context with UserId, UserName, Email, and Roles from the authenticated user's claims. It must remain after `UseAuthentication()`.
 
-### appsettings.json
+## Key Services
 
-Required configuration sections:
-- `ConnectionStrings:DefaultConnection` - PostgreSQL connection
-- `Appsettings:Token` - JWT secret key (min 256 bits)
-- `Appsettings:Issuer` - JWT issuer
-- `Appsettings:Audience` - JWT audience
-- `Serilog` - Elasticsearch logging configuration
-- `Gemini:ApiKey` - (Present but usage unclear)
+| Service | Interface | Registration | Purpose |
+|---------|-----------|-------------|---------|
+| TokenService | ITokenServiceInterface | Scoped | JWT + refresh token generation |
+| ExcelService | IExcelServiceInterface | Scoped | ClosedXML Excel generation |
+| LlmService | ILlmService | HttpClient (Scoped) | Groq API (llama-3.1-8b-instant) |
+| S3Service | IS3Service | Singleton | AWS S3 upload + pre-signed URLs |
+| EmailService | IEmailService | Scoped | Gmail SMTP email sending |
+| RabbitMQService | IRabbitMQService | Singleton | Direct RabbitMQ operations |
+| RoleSeeder | RoleSeeder | Scoped | Seeds SuperAdmin/Admin/User roles on startup |
 
-### External Dependencies
+## Configuration
 
-Required running services:
-- **PostgreSQL**: `localhost:5432`, database: `kantar`
-- **Redis**: `localhost:6379`
-- **Elasticsearch**: `http://localhost:9200`
-- **Groq API**: Internet connection for LLM queries
+Configuration key is `AppSettings` (not `Appsettings`):
+- `AppSettings:Token` - JWT secret (min 256 bits)
+- `AppSettings:Issuer` / `AppSettings:Audience` - JWT validation
+- `ConnectionStrings:DefaultConnection` - PostgreSQL
+- `ConnectionStrings:Redis` - Redis
+- `RabbitMQ:Uri` - RabbitMQ AMQP URI
+- `Groq:ApiKey`, `Groq:Endpoint`, `Groq:Model` - LLM config
+- `AWS:S3:AccessKey`, `AWS:S3:SecretKey`, `AWS:S3:BucketName`, `AWS:S3:Region` - S3
+- `EmailSettings` - SMTP config (SmtpServer, SmtpPort, SenderEmail, Password, EnableSsl)
+- `Serilog` - Grafana Loki logging config
 
-## API Documentation
+## External Dependencies
 
-- OpenAPI/Swagger available in development mode
-- Scalar API reference UI at `/scalar/v1` (via Scalar.AspNetCore package)
-- Base controller: [BaseController.cs](Kantarv2/Controllers/BaseController.cs) provides MediatR mediator injection
+Required running services (via `docker compose up -d`):
+- **PostgreSQL** (5433:5432) - Primary database
+- **Redis** (6380:6379) - Distributed cache
+- **RabbitMQ** (5672 AMQP, 15672 management UI) - Message broker
+- **Grafana Loki** (3100) - Log aggregation
 
-## Identity Configuration
+External APIs:
+- **Groq API** - LLM queries
+- **AWS S3** - Excel file storage
+- **Gmail SMTP** - Email delivery
 
-[Program.cs](Kantarv2/Program.cs:31-50) configures ASP.NET Core Identity:
-- Password requirements: Minimal (6 chars, no complexity requirements)
-- Unique email required
-- Email/phone confirmation disabled
-- Uses integer IDs (`User`, `IdentityRole<int>`)
-- Soft delete via `IsDeleted` flag on User entity
+## Logging
 
-## Key Patterns to Follow
+Serilog with Grafana Loki sink (not Elasticsearch). User context (UserId, UserName, Email, Roles) is automatically added to all log entries via `UserContextMiddleware`.
 
-1. **New features**: Create Command/Query → Handler → Controller endpoint
-2. **Database changes**: Add migration → Update KantarDbContext → Run `dotnet ef database update`
-3. **Authentication**: All commands/queries return `Response<T>`, use StatusCode for HTTP responses
-4. **Logging**: User context automatically enriched, use ILogger injection
-5. **Commands must return Response<T>**: Never return raw types from handlers
+## API Reference
+
+Scalar API reference UI available at `/scalar/v1`. Health check at `GET /health`.
