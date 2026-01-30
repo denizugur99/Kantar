@@ -1,0 +1,128 @@
+services:
+  # Kantar API
+  api:
+    build:
+      context: ./Kantarv2
+      dockerfile: Dockerfile
+    container_name: kantar-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=kantar;Username=postgres;Password=${POSTGRES_PASSWORD}"
+      ConnectionStrings__Redis: "redis:6379"
+      RabbitMQ__Uri: "amqp://guest:${RABBITMQ_PASSWORD}@rabbitmq:5672"
+      Serilog__WriteTo__0__Name: "GrafanaLoki"
+      Serilog__WriteTo__0__Args__uri: "${LOKI_URI:-http://loki:3100}"
+      Serilog__WriteTo__0__Args__credentials__login: "${LOKI_USERNAME}"
+      Serilog__WriteTo__0__Args__credentials__password: "${LOKI_PASSWORD}"
+      Appsettings__Token: "${JWT_SECRET}"
+      Appsettings__Issuer: "${JWT_ISSUER:-kantarv2}"
+      Appsettings__Audience: "${JWT_AUDIENCE:-kantarUsers}"
+      AWS__S3__AccessKey: ${AWS_S3_ACCESS_KEY}
+      AWS__S3__SecretKey: ${AWS_S3_SECRET_KEY}
+      AWS__S3__BucketName: "kantar-v2-excel"
+      AWS__S3__Region: "eu-central-1"
+      # Email Settings
+      EmailSettings__SmtpServer: "smtp.gmail.com"
+      EmailSettings__SmtpPort: "587"
+      EmailSettings__SenderEmail: ${EMAIL_SENDER}
+      EmailSettings__SenderName: "Kantar"
+      EmailSettings__Password: ${EMAIL_PASSWORD}
+      EmailSettings__EnableSsl: "true"
+      # Groq LLM
+      Groq__ApiKey: ${GROQ_API_KEY}
+      Groq__Endpoint: "https://api.groq.com/openai/v1/chat/completions"
+      Groq__Model: "llama-3.1-8b-instant"
+    ports:
+      - "5000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: kantar-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: kantar
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./docker-data/postgres:/var/lib/postgresql/data
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: kantar-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./docker-data/redis:/data
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: kantar-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - ./docker-data/rabbitmq:/var/lib/rabbitmq
+    networks:
+      - kantar-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Loki Log Aggregation
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: kantar-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker-data/loki:/loki
+    networks:
+      - kantar-network
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  kantar-network:
+    driver: bridge
